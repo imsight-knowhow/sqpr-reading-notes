@@ -146,6 +146,37 @@ cython_debug/
 .DS_Store
 Thumbs.db
 
+# LaTeX intermediate files
+*.aux
+*.lof
+*.lot
+*.fls
+*.out
+*.toc
+*.fmt
+*.fot
+*.cb
+*.cb2
+.*.lb
+*.dvi
+*.xdv
+*-converted-to.*
+*.bbl
+*.bcf
+*.blg
+*-blx.aux
+*-blx.bib
+*.run.xml
+*.fdb_latexmk
+*.synctex
+*.synctex(busy)
+*.synctex.gz
+*.synctex.gz(busy)
+*.pdfsync
+*.nav
+*.snm
+*.vrb
+
 # Model weights and data
 *.pth
 *.pt
@@ -160,4 +191,9 @@ checkpoints/
 models/
 *.parquet
 *.arrow
+
+# pixi environments
+.pixi/*
+!.pixi/config.toml
+
 tmp/

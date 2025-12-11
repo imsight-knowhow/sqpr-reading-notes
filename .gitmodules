@@ -2,3 +2,6 @@
 	path = magic-context
 	url = https://github.com/igamenovoer/magic-context
 	branch = main
+[submodule "context/refcode/SpQR"]
+	path = context/refcode/SpQR
+	url = https://github.com/Vahe1994/SpQR.git
