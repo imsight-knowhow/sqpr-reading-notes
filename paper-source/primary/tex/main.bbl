@@ -1,0 +1,296 @@
+\newcommand{\etalchar}[1]{$^{#1}$}
+\begin{thebibliography}{NAVB{\etalchar{+}}20}
+
+\bibitem[BMR{\etalchar{+}}20]{brown2020language}
+Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared~D Kaplan, Prafulla
+  Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell,
+  et~al.
+\newblock Language models are few-shot learners.
+\newblock In {\em Conference on Neural Information Processing Systems
+  (NeurIPS)}, 2020.
+
+\bibitem[BSA{\etalchar{+}}23]{biderman2023pythia}
+Stella Biderman, Hailey Schoelkopf, Quentin Anthony, Herbie Bradley, Kyle
+  O'Brien, Eric Hallahan, Mohammad~Aflah Khan, Shivanshu Purohit, USVSN~Sai
+  Prashanth, Edward Raff, et~al.
+\newblock Pythia: A suite for analyzing large language models across training
+  and scaling.
+\newblock {\em arXiv preprint arXiv:2304.01373}, 2023.
+
+\bibitem[CCE{\etalchar{+}}18]{arc_allenai}
+Peter Clark, Isaac Cowhey, Oren Etzioni, Tushar Khot, Ashish Sabharwal, Carissa
+  Schoenick, and Oyvind Tafjord.
+\newblock Think you have solved question answering? try arc, the ai2 reasoning
+  challenge.
+\newblock {\em arXiv preprint arXiv:1803.05457}, 2018.
+
+\bibitem[CND{\etalchar{+}}22]{chowdhery2022palm}
+Aakanksha Chowdhery, Sharan Narang, Jacob Devlin, Maarten Bosma, Gaurav Mishra,
+  Adam Roberts, Paul Barham, Hyung~Won Chung, Charles Sutton, Sebastian
+  Gehrmann, et~al.
+\newblock Palm: Scaling language modeling with pathways.
+\newblock {\em arXiv preprint arXiv:2204.02311}, 2022.
+
+\bibitem[DCLT19]{devlin2018bert}
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova.
+\newblock {BERT}: Pre-training of deep bidirectional transformers for language
+  understanding.
+\newblock In {\em North American Chapter of the Association for Computational
+  Linguistics (NAACL)}, 2019.
+
+\bibitem[DLBZ22]{dettmers2022llm}
+Tim Dettmers, Mike Lewis, Younes Belkada, and Luke Zettlemoyer.
+\newblock {LLM}.int8(): 8-bit matrix multiplication for transformers at scale.
+\newblock {\em Advances in Neural Information Processing Systems 35: Annual
+  Conference on Neural Information Processing Systems 2022, NeurIPS 2022},
+  2022.
+
+\bibitem[DZ22]{dettmers2022case}
+Tim Dettmers and Luke Zettlemoyer.
+\newblock The case for 4-bit precision: k-bit inference scaling laws.
+\newblock {\em arXiv preprint arXiv:2212.09720}, 2022.
+
+\bibitem[FA23]{frantar2023massive}
+Elias Frantar and Dan Alistarh.
+\newblock Massive language models can be accurately pruned in one-shot.
+\newblock {\em arXiv preprint arXiv:2301.00774}, 2023.
+
+\bibitem[FAHA22]{frantar2022gptq}
+Elias Frantar, Saleh Ashkboos, Torsten Hoefler, and Dan Alistarh.
+\newblock Gptq: Accurate post-training quantization for generative pre-trained
+  transformers.
+\newblock {\em arXiv preprint arXiv:2210.17323}, 2022.
+
+\bibitem[FSA22]{frantar2022obc}
+Elias Frantar, Sidak~Pal Singh, and Dan Alistarh.
+\newblock {Optimal Brain Compression}: A framework for accurate post-training
+  quantization and pruning.
+\newblock {\em arXiv preprint arXiv:2208.11580}, 2022.
+\newblock Accepted to NeurIPS 2022, to appear.
+
+\bibitem[GFS{\etalchar{+}}19]{gorbachev2019openvino}
+Yury Gorbachev, Mikhail Fedorov, Iliya Slavutin, Artyom Tugarev, Marat
+  Fatekhov, and Yaroslav Tarkan.
+\newblock Openvino deep learning workbench: Comprehensive analysis and tuning
+  of neural networks inference.
+\newblock In {\em Proceedings of the IEEE/CVF International Conference on
+  Computer Vision Workshops}, pages 0--0, 2019.
+
+\bibitem[GKD{\etalchar{+}}21]{gholami2021survey}
+Amir Gholami, Sehoon Kim, Zhen Dong, Zhewei Yao, Michael~W Mahoney, and Kurt
+  Keutzer.
+\newblock A survey of quantization methods for efficient neural network
+  inference.
+\newblock {\em arXiv preprint arXiv:2103.13630}, 2021.
+
+\bibitem[GTB{\etalchar{+}}21]{eval-harness}
+Leo Gao, Jonathan Tow, Stella Biderman, Sid Black, Anthony DiPofi, Charles
+  Foster, Laurence Golding, Jeffrey Hsu, Kyle McDonell, Niklas Muennighoff,
+  Jason Phang, Laria Reynolds, Eric Tang, Anish Thite, Ben Wang, Kevin Wang,
+  and Andy Zou.
+\newblock A framework for few-shot language model evaluation, September 2021.
+
+\bibitem[HABN{\etalchar{+}}21]{hoefler2021sparsity}
+Torsten Hoefler, Dan Alistarh, Tal Ben-Nun, Nikoli Dryden, and Alexandra Peste.
+\newblock Sparsity in deep learning: Pruning and growth for efficient inference
+  and training in neural networks.
+\newblock {\em arXiv preprint arXiv:2102.00554}, 2021.
+
+\bibitem[HBM{\etalchar{+}}22]{hoffmann2022training}
+Jordan Hoffmann, Sebastian Borgeaud, Arthur Mensch, Elena Buchatskaya, Trevor
+  Cai, Eliza Rutherford, Diego de~Las Casas, Lisa~Anne Hendricks, Johannes
+  Welbl, Aidan Clark, et~al.
+\newblock Training compute-optimal large language models.
+\newblock {\em arXiv preprint arXiv:2203.15556}, 2022.
+
+\bibitem[HNH{\etalchar{+}}21]{hubara2021accurate}
+Itay Hubara, Yury Nahshan, Yair Hanani, Ron Banner, and Daniel Soudry.
+\newblock Accurate post training quantization with small calibration sets.
+\newblock In {\em International Conference on Machine Learning (ICML)}, 2021.
+
+\bibitem[KHB{\etalchar{+}}21]{fbgemm}
+Daya Khudia, Jianyu Huang, Protonu Basu, Summer Deng, Haixin Liu, Jongsoo Park,
+  and Mikhail Smelyanskiy.
+\newblock Fbgemm: Enabling high-performance low-precision deep learning
+  inference.
+\newblock {\em arXiv preprint arXiv:2101.05615}, 2021.
+
+\bibitem[KMH{\etalchar{+}}20]{kaplan2020scaling}
+Jared Kaplan, Sam McCandlish, Tom Henighan, Tom~B Brown, Benjamin Chess, Rewon
+  Child, Scott Gray, Alec Radford, Jeffrey Wu, and Dario Amodei.
+\newblock Scaling laws for neural language models.
+\newblock {\em arXiv preprint arXiv:2001.08361}, 2020.
+
+\bibitem[LGT{\etalchar{+}}21]{li2021brecq}
+Yuhang Li, Ruihao Gong, Xu~Tan, Yang Yang, Peng Hu, Qi~Zhang, Fengwei Yu, Wei
+  Wang, and Shi Gu.
+\newblock {BRECQ}: Pushing the limit of post-training quantization by block
+  reconstruction.
+\newblock In {\em International Conference on Learning Representations (ICLR)},
+  2021.
+
+\bibitem[MKM{\etalchar{+}}94]{PTB}
+Mitch Marcus, Grace Kim, Mary~Ann Marcinkiewicz, Robert MacIntyre, Ann Bies,
+  Mark Ferguson, Karen Katz, and Britta Schasberger.
+\newblock The penn treebank: Annotating predicate argument structure.
+\newblock In {\em Human Language Technology: Proceedings of a Workshop held at
+  Plainsboro, New Jersey, March 8-11, 1994}, 1994.
+
+\bibitem[MXBS16]{wikitext103}
+Stephen Merity, Caiming Xiong, James Bradbury, and Richard Socher.
+\newblock Pointer sentinel mixture models.
+\newblock {\em arXiv preprint arXiv:1609.07843}, 2016.
+
+\bibitem[NAVB{\etalchar{+}}20]{nagel2020up}
+Markus Nagel, Rana~Ali Amjad, Mart Van~Baalen, Christos Louizos, and Tijmen
+  Blankevoort.
+\newblock Up or down? {A}daptive rounding for post-training quantization.
+\newblock In {\em International Conference on Machine Learning (ICML)}, 2020.
+
+\bibitem[Neu22]{deepsparse}
+NeuralMagic.
+\newblock {DeepSparse}, 2022.
+
+\bibitem[OEN{\etalchar{+}}22]{olsson2022context}
+Catherine Olsson, Nelson Elhage, Neel Nanda, Nicholas Joseph, Nova DasSarma,
+  Tom Henighan, Ben Mann, Amanda Askell, Yuntao Bai, Anna Chen, et~al.
+\newblock In-context learning and induction heads.
+\newblock {\em arXiv preprint arXiv:2209.11895}, 2022.
+
+\bibitem[Ope23]{openai2023gpt}
+OpenAI.
+\newblock Gpt-4 technical report.
+\newblock {\em arXiv}, 2023.
+
+\bibitem[PGM{\etalchar{+}}19]{pytorch}
+Adam Paszke, Sam Gross, Francisco Massa, Adam Lerer, James Bradbury, Gregory
+  Chanan, Trevor Killeen, Zeming Lin, Natalia Gimelshein, Luca Antiga, Alban
+  Desmaison, Andreas Kopf, Edward Yang, Zachary DeVito, Martin Raison, Alykhan
+  Tejani, Sasank Chilamkurthy, Benoit Steiner, Lu~Fang, Junjie Bai, and Soumith
+  Chintala.
+\newblock {PyTorch}: An imperative style, high-performance deep learning
+  library.
+\newblock In {\em Conference on Neural Information Processing Systems
+  (NeurIPS)}. 2019.
+
+\bibitem[PPK{\etalchar{+}}22]{park2022nuqmm}
+Gunho Park, Baeseong Park, Se~Jung Kwon, Byeongwook Kim, Youngjoo Lee, and
+  Dongsoo Lee.
+\newblock {nuQmm}: Quantized matmul for efficient inference of large-scale
+  generative language models.
+\newblock {\em arXiv preprint arXiv:2206.09557}, 2022.
+
+\bibitem[RCK{\etalchar{+}}20]{reddi2020mlperf}
+Vijay~Janapa Reddi, Christine Cheng, David Kanter, Peter Mattson, Guenther
+  Schmuelling, Carole-Jean Wu, Brian Anderson, Maximilien Breughe, Mark
+  Charlebois, William Chou, et~al.
+\newblock Mlperf inference benchmark.
+\newblock In {\em 2020 ACM/IEEE 47th Annual International Symposium on Computer
+  Architecture (ISCA)}, pages 446--459. IEEE, 2020.
+
+\bibitem[RSR{\etalchar{+}}20]{C4}
+Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang, Michael
+  Matena, Yanqi Zhou, Wei Li, and Peter Liu.
+\newblock Exploring the limits of transfer learning with a unified text-to-text
+  transformer.
+\newblock {\em Journal of Machine Learning Research}, 21(140):1--67, 2020.
+
+\bibitem[RWC{\etalchar{+}}19]{radford2019language}
+Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, and Ilya
+  Sutskever.
+\newblock Language models are unsupervised multitask learners.
+\newblock {\em OpenAI blog}, 1(8):9, 2019.
+
+\bibitem[SBBC21]{DBLP:journals/cacm/winogrande2021}
+Keisuke Sakaguchi, Ronan~Le Bras, Chandra Bhagavatula, and Yejin Choi.
+\newblock Winogrande: an adversarial winograd schema challenge at scale.
+\newblock {\em Commun. {ACM}}, 64(9):99--106, 2021.
+
+\bibitem[SLP{\etalchar{+}}21]{su2021roformer}
+Jianlin Su, Yu~Lu, Shengfeng Pan, Ahmed Murtadha, Bo~Wen, and Yunfeng Liu.
+\newblock Roformer: Enhanced transformer with rotary position embedding.
+\newblock {\em arXiv preprint arXiv:2104.09864}, 2021.
+
+\bibitem[TLI{\etalchar{+}}23]{touvron2023llama}
+Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Martinet, Marie-Anne
+  Lachaux, Timoth{\'e}e Lacroix, Baptiste Rozi{\`e}re, Naman Goyal, Eric
+  Hambro, Faisal Azhar, et~al.
+\newblock Llama: Open and efficient foundation language models.
+\newblock {\em arXiv preprint arXiv:2302.13971}, 2023.
+
+\bibitem[TP03]{tata2003piqa}
+Sandeep Tata and Jignesh~M Patel.
+\newblock {PiQA}: An algebra for querying protein data sets.
+\newblock In {\em International Conference on Scientific and Statistical
+  Database Management}, 2003.
+
+\bibitem[UAE23a]{falcon2023}
+TII UAE.
+\newblock The falcon family of large language models.
+\newblock \url{https://huggingface.co/tiiuae/falcon-40b}, May 2023.
+
+\bibitem[UAE23b]{refinedweb2023}
+TII UAE.
+\newblock The refined web dataset.
+\newblock \url{https://huggingface.co/datasets/tiiuae/falcon-refinedweb}, May
+  2023.
+
+\bibitem[Vig19]{vig2019multiscale}
+Jesse Vig.
+\newblock A multiscale visualization of attention in the transformer model.
+\newblock {\em arXiv preprint arXiv:1906.05714}, 2019.
+
+\bibitem[VTM{\etalchar{+}}19]{voita-etal-2019-analyzing}
+Elena Voita, David Talbot, Fedor Moiseev, Rico Sennrich, and Ivan Titov.
+\newblock Analyzing multi-head self-attention: Specialized heads do the heavy
+  lifting, the rest can be pruned.
+\newblock In {\em Proceedings of the 57th Annual Meeting of the Association for
+  Computational Linguistics}, pages 5797--5808, Florence, Italy, July 2019.
+  Association for Computational Linguistics.
+
+\bibitem[WBZ{\etalchar{+}}21]{wei2021finetuned}
+Jason Wei, Maarten Bosma, Vincent~Y Zhao, Kelvin Guu, Adams~Wei Yu, Brian
+  Lester, Nan Du, Andrew~M Dai, and Quoc~V Le.
+\newblock Finetuned language models are zero-shot learners.
+\newblock {\em arXiv preprint arXiv:2109.01652}, 2021.
+
+\bibitem[WCHC20]{wang2020towards}
+Peisong Wang, Qiang Chen, Xiangyu He, and Jian Cheng.
+\newblock Towards accurate post-training network quantization via bit-split and
+  stitching.
+\newblock In {\em International Conference on Machine Learning (ICML)}, 2020.
+
+\bibitem[WMR{\etalchar{+}}21]{weidinger2021ethical}
+Laura Weidinger, John Mellor, Maribeth Rauh, Conor Griffin, Jonathan Uesato,
+  Po-Sen Huang, Myra Cheng, Mia Glaese, Borja Balle, Atoosa Kasirzadeh, Zac
+  Kenton, Sasha Brown, Will Hawkins, Tom Stepleton, Courtney Biles, Abeba
+  Birhane, Julia Haas, Laura Rimell, Lisa~Anne Hendricks, William Isaac, Sean
+  Legassick, Geoffrey Irving, and Iason Gabriel.
+\newblock Ethical and social risks of harm from language models, 2021.
+
+\bibitem[WSM{\etalchar{+}}18]{wang2018glue}
+Alex Wang, Amanpreet Singh, Julian Michael, Felix Hill, Omer Levy, and Samuel~R
+  Bowman.
+\newblock Glue: A multi-task benchmark and analysis platform for natural
+  language understanding.
+\newblock {\em arXiv preprint arXiv:1804.07461}, 2018.
+
+\bibitem[XLS{\etalchar{+}}22]{xiao2022smoothquant}
+Guangxuan Xiao, Ji~Lin, Mickael Seznec, Julien Demouth, and Song Han.
+\newblock Smoothquant: Accurate and efficient post-training quantization for
+  large language models.
+\newblock {\em arXiv preprint arXiv:2211.10438}, 2022.
+
+\bibitem[YAZ{\etalchar{+}}22]{yao2022zeroquant}
+Zhewei Yao, Reza~Yazdani Aminabadi, Minjia Zhang, Xiaoxia Wu, Conglong Li, and
+  Yuxiong He.
+\newblock Zeroquant: Efficient and affordable post-training quantization for
+  large-scale transformers.
+\newblock {\em arXiv preprint arXiv:2206.01861}, 2022.
+
+\bibitem[YLW{\etalchar{+}}23]{yao2023comprehensive}
+Zhewei Yao, Cheng Li, Xiaoxia Wu, Stephen Youn, and Yuxiong He.
+\newblock A comprehensive study on post-training quantization for large
+  language models, 2023.
+
+\end{thebibliography}

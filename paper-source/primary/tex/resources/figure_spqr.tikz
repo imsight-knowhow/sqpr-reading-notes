@@ -1,0 +1,169 @@
+%\usepackage{pgf}  % Needed for random number generation
+
+
+\newcommand{\drawgrid}[9]{
+% draws 3d box with grid
+% #1 = starting x coordinate
+% #2 = starting y coordinate
+% #3 = number of x cells
+% #4 = number of y cells
+% #5 = number of z cells
+% #6 = x and y cell size
+% #7 = z cell size
+% #8 = line color
+% #9 = fill color
+\begin{tikzpicture}[x=#6cm, y=#6cm, z=#7cm]
+
+    \foreach \x in {0,...,\numexpr#3-1} {
+        \foreach \y in {0,...,\numexpr#4-1} {
+            \draw[color=#8, fill=#9] (#1+\x,#2+\y,#5) -- (#1+\x+1,#2+\y,#5) -- (#1+\x+1,#2+\y+1,#5) -- (#1+\x,#2+\y+1,#5) -- cycle;
+        }
+    }
+    \foreach \x in {0,...,\numexpr#3-1} {
+        \foreach \z in {0,...,\numexpr#5-1} {
+            \draw[color=#8, fill=#9] (#1+\x,#2+#4,\z+#5) -- (#1+\x+1,#2+#4,\z+#5) -- (#1+\x+1,#2+#4,\z+1+#5) -- (#1+\x,#2+#4,\z+1+#5) -- cycle;
+        }
+    }
+    \foreach \y in {0,...,\numexpr#4-1} {
+        \foreach \z in {0,...,\numexpr#5-1} {
+            \draw[color=#8, fill=#9] (#1+#3,#2+\y,\z+#5) -- (#1+#3,#2+\y+1,\z+#5) -- (#1+#3,#2+\y+1,\z+1+#5) -- (#1+#3,#2+\y,\z+1+#5) -- cycle;
+        }
+    }
+\end{tikzpicture}
+}
+
+
+
+\newcommand{\calloutgrid}[9]{
+% draws 3d box with grid
+% #1 = starting x coordinate
+% #2 = starting y coordinate
+% #3 = number of x cells
+% #4 = number of y cells
+% #5 = number of z cells
+% #6 = x and y cell size
+% #7 = z cell size
+% #8 = line color
+% #9 = fill color
+\begin{tikzpicture}[x=#6cm, y=#6cm, z=#7cm]
+    \def\xxleft{-8};
+    \def\xxright{20};
+    \def\xxup{36};
+    \def\xxdown{8};
+    % \def\xxside{30};
+
+    % \draw[step=4,gray,very thin] (\xxleft, \xxdown) grid  (\xxright,\xxup);
+    % \draw [color=red] (\xxleft, \xxdown) rectangle (\xxright,\xxup);
+    % \draw[color=blue] (-20, 10) rectangle (\xxside,\xxside);
+    % \draw[color=green] (\xxleft, \xxdown) -- (\xxright,\xxdown) -- (\xxright,\xxup) -- (\xxleft,\xxup) -- cycle;
+
+    \foreach \x in {0,...,\numexpr#3-1} {
+        \foreach \y in {0,...,\numexpr#4-1} {
+            \draw[color=#8, fill=#9] (#1+\x,#2+\y,#5) -- (#1+\x+1,#2+\y,#5) -- (#1+\x+1,#2+\y+1,#5) -- (#1+\x,#2+\y+1,#5) -- cycle;
+        }
+    }
+    
+    \foreach \x in {0,...,\numexpr#3-1} {
+        \foreach \z in {0,...,\numexpr#5-1} {
+            \draw[color=#8, fill=#9] (#1+\x,#2+#4,\z+#5) -- (#1+\x+1,#2+#4,\z+#5) -- (#1+\x+1,#2+#4,\z+1+#5) -- (#1+\x,#2+#4,\z+1+#5) -- cycle;
+        }
+    }
+    \foreach \y in {0,...,\numexpr#4-1} {
+        \foreach \z in {0,...,\numexpr#5-1} {
+            \draw[color=#8, fill=#9] (#1+#3,#2+\y,\z+#5) -- (#1+#3,#2+\y+1,\z+#5) -- (#1+#3,#2+\y+1,\z+1+#5) -- (#1+#3,#2+\y,\z+1+#5) -- cycle;
+        }
+    }
+\end{tikzpicture}
+}
+
+
+
+\newcommand{\drawholes}[9]{
+\begin{tikzpicture}[x=#6cm, y=#6cm, z=#7cm]
+
+    \foreach \x in {0,...,\numexpr#3-1} {
+        \foreach \y in {0,...,\numexpr#4-1} {
+            \pgfmathparse{random(0,9)}  % Generate a random number between 0 and 9
+            \ifnum\pgfmathresult<1
+                \draw[color=#8, fill=gray] (#1+\x,#2+\y,#5) -- (#1+\x+1,#2+\y,#5) -- (#1+\x+1,#2+\y+1,#5) -- (#1+\x,#2+\y+1,#5) -- cycle;  % If random number is less than 1, fill cell with gray
+            \else
+                \draw[color=#8, fill=#9] (#1+\x,#2+\y,#5) -- (#1+\x+1,#2+\y,#5) -- (#1+\x+1,#2+\y+1,#5) -- (#1+\x,#2+\y+1,#5) -- cycle;  % Otherwise, fill cell with original color
+            \fi
+        }
+    }
+    \foreach \x in {0,...,\numexpr#3-1} {
+        \foreach \z in {0,...,\numexpr#5-1} {
+            \draw[color=#8, fill=#9] (#1+\x,#2+#4,\z+#5) -- (#1+\x+1,#2+#4,\z+#5) -- (#1+\x+1,#2+#4,\z+1+#5) -- (#1+\x,#2+#4,\z+1+#5) -- cycle;
+        }
+    }
+    \foreach \y in {0,...,\numexpr#4-1} {
+        \foreach \z in {0,...,\numexpr#5-1} {
+            \draw[color=#8, fill=#9] (#1+#3,#2+\y,\z+#5) -- (#1+#3,#2+\y+1,\z+#5) -- (#1+#3,#2+\y+1,\z+1+#5) -- (#1+#3,#2+\y,\z+1+#5) -- cycle;
+        }
+    }
+
+
+\end{tikzpicture}
+}
+
+
+\begin{tikzpicture}
+
+\def\toptitlepos{-2.1}        % offset for top titles
+\def\bottomtitlepos{-2.3}    % offset for bottom titles
+\def\gridcolor{black!70}
+
+% Original weights
+\def\anchor0{0}
+\node at (\anchor0, 0) {\calloutgrid{0}{0}{16}{16}{12}{0.15}{0.05}{\gridcolor}{orange!10}};
+\node at (\anchor0, \toptitlepos) [font=\fontsize{10}{8}\selectfont, align=center] {original weights};
+\node [anchor=north] at (\anchor0, \bottomtitlepos) [font=\fontsize{8}{8}\selectfont, align=center] 
+{in\_dim x out\_dim x 16bit};
+
+% Arrow
+\def\anchorarrow{2.25}
+\node [single arrow, draw, fill=black!10, minimum width=1cm, minimum height=1cm] at (\anchorarrow, 0) {SpQR};
+
+% Quantized weights
+\def\anchor1{4.5}
+\node at (\anchor1 ,0) {\drawgrid{0}{0}{16}{16}{3}{0.15}{0.05}{\gridcolor}{yellow!20}};
+\node at (\anchor1, \toptitlepos) [font=\fontsize{10}{10}\selectfont, align=center] {quantized weights};
+\node [anchor=north] at (\anchor1, \bottomtitlepos) [font=\fontsize{8}{8}\selectfont, align=center] {in\_dim x out\_dim x 3bit};
+
+% scales and zeros
+\def\anchor3a{6.75}
+\node at (\anchor3a, 0) {\drawgrid{0}{0}{4}{16}{3}{0.15}{0.05}{\gridcolor}{green!10}};
+\def\anchor3b{8.125}
+\node at (\anchor3b, 0) {\drawgrid{0}{0}{4}{16}{3}{0.15}{0.05}{\gridcolor}{blue!10}};
+\def\anchor3c{7.25}
+\node  [anchor=south] at (\anchor3c, \bottomtitlepos) [font=\fontsize{10}{10}\selectfont, align=center] 
+    {quantized\\scales and zeros};
+\node [anchor=north] at (\anchor3c, \bottomtitlepos) [font=\fontsize{8}{8}\selectfont, align=center] 
+    {in\_dim x out\_dim\\/ groupsize x 3bit};
+
+% QQ scales and zeros 
+\def\xxxa{10.0};  % left blocks' center
+\def\xxxb{11.5};  % right blocks center
+\def\xxxc{10.75};  % caption center
+\def\xxxd{0.8};
+\def\xxxe{-0.8};
+
+% \node at (\anchor5a, -0.8) {\drawgrid{0}{0}{4}{3}{16}{0.15}{0.05}{\gridcolor}{blue!10}};
+\node at (\xxxa, \xxxd) {\drawgrid{0}{0}{4}{3}{16}{0.15}{0.05}{\gridcolor}{green!10}};
+\node at (\xxxb, \xxxd) {\drawgrid{0}{0}{4}{3}{16}{0.15}{0.05}{\gridcolor}{blue!10}};
+\node at (\xxxa, \xxxe) {\drawgrid{0}{0}{4}{3}{16}{0.15}{0.05}{\gridcolor}{green!10}};
+\node at (\xxxb, \xxxe) {\drawgrid{0}{0}{4}{3}{16}{0.15}{0.05}{\gridcolor}{blue!10}};
+
+\node [anchor=south] at (\xxxc, \bottomtitlepos) [font=\fontsize{10}{10}\selectfont, align=center] 
+    {2nd order \\ scales and zeros};
+\node [anchor=north] at (\xxxc, \bottomtitlepos) [font=\fontsize{8}{8}\selectfont, align=center] 
+    {in\_dim x out\_dim x 16bit\\/ groupsize / q\_groupsize};
+
+% Outliers
+\def\anchor4{14.5}
+\node at (\anchor4, 0) {\drawholes{0}{0}{16}{16}{16}{0.15}{0.05}{black!40}{white}};
+% \node at (\anchor4, 0) {\drawgrid{0}{0}{6}{6}{24}{0.15}{0.05}{\gridcolor}{purple!10}};
+\node at (\anchor4, \toptitlepos) [font=\fontsize{10}{10}\selectfont, align=center] {outliers};
+\node [anchor=north] at (\anchor4, \bottomtitlepos) [font=\fontsize{8}{8}\selectfont, align=center] {in\_dim x out\_dim \\ x $\sim$ 1\% x $\sim$32bit};
+
+\end{tikzpicture}

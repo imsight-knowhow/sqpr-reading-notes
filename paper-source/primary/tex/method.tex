@@ -1,0 +1,252 @@
+\subsection{Exploring parameter sensitivity}\label{sect:method_llama65}
+
+Before we define out main method, SpQR, we provide a motivating analysis of parameter sensitivity which uncovers that the location of sensitive weights in the weight matrix are not random but have particular structures. To highlight these structural elements during the quantization process, we calculate the the per-weight sensitivities and visualize them for the popular and highly-accurate LLaMA-65B model~\cite{touvron2023llama}. 
+As the quantization method, we use GPTQ quantization to 3-bit, without weight grouping, following~\citep{frantar2022gptq}. We use C4~\cite{C4} as the calibration dataset, and we estimate the error on 128 sequences of 2048 tokens each. 
+Figure~\ref{fig:patterns} depicts the output projection of the last self-attention layer of LLaMA-65B. 
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[height=150px]{resources/q_error_patterns_grid_0_blu_v2.pdf}
+    \caption{Weight log-sensitivities from the last attention layer of LLaMA-65B. Dark-blue shades indicate higher sensitivity. The image on the left is a high-level view, resized to 1:32 scale with max-pooling. The two images in the middle are zoomed in from the main figure. The two images on the right are taken from other weight matrices.}
+    \label{fig:patterns}
+\end{figure}
+
+
+% (In the HuggingFace implementation, this corresponds to \texttt{model.layers.79.self\_attn.o\_proj}.)
+Using the sensitivity analysis, we observe several patterns in the weight matrix, often in a single row or column. 
+Since the large weight matrices in LLaMA-65B have too many rows/columuns to be respresentable in a compact image (default: 8k $\times$ 32k pixels) we perform max pooling to visualize the matrices, that is we take the maximum sensitivity in each square of $32\times32$ rows and columns. This max pooling only affects the leftmost image.
+Using this visualization, we observe that the quantization error patterns vary both by layer type, for example attention vs multilayer perceptron (MLP), and layer depth. In particular, we find that more sensitive outliers are present for deeper layers.  (Please see Appendix \ref{app:extra_analysis} for additional results.) 
+We now proceed to categorize outlier structures, taking this  attention weight matrix as an exemplar. We make the following observations:
+
+\begin{itemize}
+    \item \textbf{Row outliers} are shown in Figure~\ref{fig:patterns} bottom-center as regions of high sensitivity within one output unit. Some of these patterns span the entire row, while others are partial. In attention layers, some of the partial row outliers correspond to some subset of attention heads. \textbf{Column outliers} appear in Figure~\ref{fig:patterns}, bottom-right, showing high sensitivity in select input dimensions (columns) across all rows. The latter are correlated to the ``outlier feature'' phenomenon reported in Dettmers et al.~\cite{dettmers2022llm}.
+    
+    \item \textbf{Sensitive attention heads.} (Figure~\ref{fig:patterns}, top-center) -- regular stripes of width 128 highlight all weights corresponding to one attention head.  This could be related to some attention heads having more important functions~\cite{voita-etal-2019-analyzing,vig2019multiscale,olsson2022context}. 
+The corresponding ``stripes'' are horizontal for attention Q \& K projections, vertical in output projection, and absent from value projections and any MLP weights. Of note, there is significant variation in individual weight sensitivity even within the sensitive heads.
+    \item  
+\textbf{The Rotary embedding pattern}, a repeating vertical pattern of sensitivity with a period of 64 units. We attribute this to the use of rotary embeddings~\cite{su2021roformer}: each attention head (dim = 128) is split into two halves: the first 64 are ``rotated'' with cosine, and the other 64 use sine. Both sine and cosine rotation use the same set of frequencies. Typically, the weights that correspond to low-frequency sines and cosines are more sensitive than their high-frequency counterparts, as shown in Figure~\ref{fig:patterns} (top-right). As expected, this pattern is absent from any layer not using rotary embeddings.
+
+    \item 
+\textbf{Unstructured outliers.} Besides the above, each layer has a number of individual sensitivity weights that do not fit into any of the above patterns.
+These unstructured outliers occur more frequently for columns with largest input index (i.e. on the right side of the images). This effect is difficult to see on a heatmap, so we provide additional figures and statistical tests in Appendix \ref{app:extra_analysis}.
+We believe is probably an artefact of the GPTQ algorithm, which compresses one by one, using yet-uncompressed weights to compensate the error. 
+Thus, the rightmost batch of weights accumulates the most error.
+
+\end{itemize}
+
+Next, we will leverage these findings to propose a compressed representation which can support all these different outlier types. 
+
+
+
+
+% \vspace{-0.7em}
+\section{SpQR: A Sensitivity-aware compressed representation}\label{sect:method_compress}
+% \vspace{-0.5em}
+
+\subsection{Overview}
+
+Existing LLM quantization algorithms treat low- and high-sensitivity weights equally; however, our above discussion suggests that this may lead to sub-optimal quantization. 
+Ideally, we would want the representation to assign more of its ``size budget'' to sensitive weights. However, these weights are scattered in the weight matrix as either individual weights or small groups, for example, partial rows or attention head. To capture this structure, we are introducing two changes to the quantization procedure: one for capturing small sensitive groups, and another for capturing individual outliers.
+
+\textbf{Capturing small groups of weights with bilevel quantization.}
+% outliers affect quantization due to reducing the utilization of quantization bins after normalization into the maximum range of the quantization range. With a small group size, we can limit this effect to a small group of weights rather than all weights in the weight tensor. The smaller the group, the more we isolate outliers into particular groups. However, this increases the memory required to store gropps. As such we need develop bilevel quantziation 
+In the previous section, we observed several cases where weights behave similarly in small consecutive groups, with abrupt changes between groups, for example for some attention head and partial row outliers (see Figure~\ref{fig:outliers_fig} left, bottom-center). When applying a standard approach, there will be many cases where these weights will be grouped together, sharing the same quantization statistics. To reduce the number of such cases, we use groupwise quantization with extremely small groups, typically of $\beta_1{=}8-32$ weights.
+That is, for every $\beta_1$ consecutive weights, there is a separate quantization scale and zero-point. 
+This choice runs contrary to current intuition: for instance, the recent work of Yao et al.~\cite{yao2023comprehensive}
+explicitly recommends against small groups, arguing that the overhead for storing quantization statistics would outweigh the precision advantages.
+
+To circumvent this issue, we quantize the groupwise statistics themselves using the same quantization algorithm as for weights --- asymmetric (min-max) quantization. Because of how min-max quantization works, the range of quantized values will fit to the groups with largest (or smallest) quantization scale, quantizing them perfectly.
+In other words, we group groupwise statistics from $\beta_2=16$ consecutive values and quantize them together in the same number of bits, such that groups with atypical quantization parameters end up using more of the ``quantization budget''. Finally, both first and second-level quantization is directly within the quantization process, allowing the algorithm to compensate the second-level quantization error where possible.
+
+\textbf{High-sensitivity outliers.} Our analysis showed the existence of cases where a small percentage of sensitive weights come in small groups (in the self-attention) or individual ``outliers'' (in the MLP). 
+In some cases, 1\% of the weights account for over 75\% of the total quantization error. 
+Since these weights appear to lead to high, irreducible error, we choose to keep these outliers in high precision (16-bit).
+As these outliers are often unstructured, we encode them individually in a row-wise arrangement similar to a compressed-sparse-row (CSR) representation~\cite{hoefler2021sparsity}. This can encode both individual outliers and small structures that do not fit into the above definition of groups.
+
+
+The procedure for detecting the outliers is described in detail in 
+Alg.~\ref{alg:main}. If follows a rough two-step procedure: (1) find and isolate outliers as 16-bit weights, (2) quantize the non-outlier ``base'' weights into 3-4 bit and transfer the remaining quantization into the the 16-bit outliers weights.
+% At a high , this estimates the reduction in the layer's error caused by exempting the given weight from quantization. 
+% Please see Alg.~\ref{alg:main} (right) for the analytic formulas and their implementation. 
+For the outlier isolation step, the algorithm implements a filtering technique based on the sensitivity criterion in Eq.~\eqref{eq:error},  
+which is used to isolate and separate outliers from base weights. 
+Globally, for each matrix, the algorithm aims to pick a sensitivity threshold $\tau$ to obtain the desired number of outliers across the whole model, usually around $1\%$ of weights.
+Specifically, a particular weight is considered an outlier if keeping the weight in 16-bit reduces the error in Eq.~\eqref{eq:error} by at least $\tau$. 
+
+Following this first outlier detection step, we quantize the base weights ignoring all outliers that occur in the same quantization group. As such, the quantization statistics (e.g. scales) are computed by excluding outliers. This results in significant improvements in terms of error, since e.g. the min-max scales will be significantly reduced.  
+The algorithm then proceeds to apply GPTQ to quantize the remaining weights.  
+% (We show in Section~\ref{sect:experiments} that the algorithm is robust to the choice of $\tau$.) 
+Interestingly, unlike~\cite{dettmers2022llm}, a weight can be chosen to be an outlier not only if it causes error by itself, but also if the GPTQ algorithm can employ this weight to compensate errors from many other weights. Thus, the resulting 16-bit value will contain not the original weight, but a weight that was adjusted to minimize the output error. As such, SpQR goes beyond mere detection of outliers towards the more general notion of isolating and treating outliers that occur {\it during} the quantization process.
+Finally, the algorithm gathers and compresses sparse outlier matrix as well as the final quantization statistics with bilevel quantization and returns the compressed weights and their metadata. 
+
+
+\begin{algorithm}
+\caption{SpQR quantization algorithm: the left snippet describes the full procedure, the right side contains subroutines for bilevel quantization and finding outliers.}
+\label{alg:main}
+\small
+\begin{minipage}{0.6\textwidth}
+    \texttt{func} \algname{SpQRQuantize($W, X, b, \beta_1, \beta_2, \tau, \lambda$)}
+    \begin{algorithmic}[1]
+      \Require $W\in \mathcal{R}^{m\times n}$ --- weight matrix,
+      \Statex \quad\space\space $X\in \mathcal{R}^{n\times d}$ --- calibration data,
+      \Statex \quad\space\space $b$ --- the base number of quantization bits,
+      \Statex \quad\space\space $\beta_1, \beta_2$ --- quantization group sizes,
+      \Statex \quad\space\space $\tau$ --- sensitivity outlier threshold
+      \Statex \quad\space\space $\lambda$ --- hessian regularizer,
+      \Statex
+      \State $E := \text{float\_matrix}(m, n)$ \quad // L2 error
+      \State $H := 2 X X^T$  \quad // L2 error hessian, $\mathcal{R}^{n \times n}$
+      \State $H^{\text{ic}} := \text{Cholesky}((H + \lambda \mathbf{I})^{-1})$
+      \State $Q := \text{int\_matrix}(m, n)$ \quad  // quantized weight
+      \State $\mathcal{O} := \emptyset$ \quad  // a set of all outliers
+      \State $\mathcal{S} := \emptyset$ \quad  // a set of quantization statistics
+      \For{$i = 1, \beta_1, 2 \beta_1, \dots n$}
+        \State $W_{:, i: i + \beta_1}, \mathcal{O} := \text{outliers}(W_{:, i: i + \beta_1}, H^{\text{ic}}_{i: (i + \beta_1), i: (i + \beta_1)} \mathcal{O})$
+        \State $\hat s, \hat z, \mathcal{S} := \text{fit\_statistics}(W_{:, i: i + \beta_1}, \mathcal{S}, \mathcal{O})$
+        \For{$j = i, \dots, i + \beta_1$}
+          \State $Q_{:, j} := \text{quantize}(W_{:, j}, \hat s, \hat z)$
+          \State $\vec w_q := \text{dequantize}(Q_{:, j}, \hat s, \hat z)$
+          \State $E_{:, j} := (W_{:, j} - \vec w_q) / H^{\text{ic}}_{j, j} \cdot (1 - \text{is\_outlier}(W_{:, j}, \mathcal{O}))$
+          \State $W_{:, j:(i + \beta_1)} := W_{:, j:(i + \beta_1)} - E \cdot H^{\text{ic}}_{j, j:(i + \beta_1)}$
+        \EndFor
+        \State $W_{:, (i + \beta_1) : n} := W_{:, (i + \beta_1):n} - E \cdot H^{\text{ic}}_{i: (i + \beta_1), i:(i + \beta_1)}$
+      \EndFor
+      \State $S_q, Z_q, S_s, Z_s, S_z, Z_z := \text{gather\_statistics}(\mathcal{S})$
+      \State $W_{sparse} = \text{gather\_outlier\_matrix}(W, \mathcal{O})$
+      \State\Return $Q, S_q, Z_q, S_s, Z_s, S_z, Z_z, W_{sparse}$
+    \end{algorithmic}
+    \vspace{8px}
+    \texttt{func} $\textbf{quantize}(M, \vec s, \vec z)$
+    \begin{algorithmic}[1]
+    \State\Return $\lfloor M / \vec s + \vec z + 0.5 \rfloor$
+    \end{algorithmic}
+    \vspace{8px}
+    \texttt{func} $\textbf{dequantize}(Q, \vec s, \vec z)$
+    \begin{algorithmic}[1]
+    \State\Return $\vec s \cdot (Q - \vec z)$
+    \end{algorithmic}
+\end{minipage}
+\hspace{10px}\begin{minipage}{0.35\textwidth}
+    \texttt{func} $\textbf{fit\_quantizer}(M, \beta)$
+    \begin{algorithmic}[1]
+    \State $\vec m := \text{flatten}(M)$
+    \State $\vec s, \vec z := \text{vectors()}$
+    \For{$i = 1, \beta_1, 2 \beta_1, \dots \text{dim(m)}$}
+      \State $s_i := \frac{\text{max}({\vec m}_{i: i + \beta}) - \text{min}({\vec m}_{i: i + \beta})}{2^b - 1}$
+      \State $z_i := - \text{min}({\vec m}_{i: i + \beta}) / s_i$
+    \EndFor
+    \State\Return $\vec s, \vec z$
+    \end{algorithmic}
+
+    \texttt{func} $\textbf{error}(W, H^{\text{ic}})$
+    \begin{algorithmic}[1]
+    \State $\vec s, \vec z := \text{fit\_quantizer}(W, \beta_1)$
+    \State $W_q := \text{quantize}(W, \vec s, \vec z)$
+    \State $E := (W - W_q) / H^{\text{ic}}$
+    \State\Return $E ^ 2$
+    \end{algorithmic}
+    
+    \texttt{func} $\textbf{outliers}(W, H^{\text{ic}}, \mathcal{O})$
+    \begin{algorithmic}[1]
+    \State $E_{\text{base}} = \text{error}(W, H^{\text{ic}})$
+    \For{$i = 1, \dots, \beta_1$}
+      \State $loo := \{1, 2, ..., \beta_1\} / \{i\}$
+      \State $E_{\text{ol}} = \text{error}(W_{:, \text{loo}}, H^{\text{ic}}_{\text{loo}, \text{loo}})$
+      \State $I_o = \text{select}(E_{\text{base}} - E_{\text{ol}} > \tau)$
+      \State $\mathcal{O} := \mathcal{O} \cup I_o$    
+    \EndFor
+    \State\Return $W, \mathcal{O}$
+        %     \State $\vec s, \vec z := \text{fit\_quantizer}(W_{:, i: i + \beta_1}, \beta_1)$
+        % \State // $\vec s$ for scales, $\vec z$ for zero points
+        % \State $\vec s_s, \vec z_s := \text{fit\_quantizer}(\vec s, \beta_2)$
+        % \State $\vec s_z, \vec z_z := \text{fit\_quantizer}(\vec z, \beta_2)$
+        % \State $\vec s_q := \text{quantize}(\vec{s}, \vec s_s, \vec z_s)$
+        % \State $\vec z_q := \text{quantize}(\vec{z}, \vec s_z, \vec z_z)$
+    \end{algorithmic}
+    
+    \texttt{func} $\textbf{fit\_statistics}(W, \mathcal{S}, \mathcal{O})$
+    \begin{algorithmic}[1]
+        \State $W := W \cdot (1 - \text{is\_outlier}(W, O))$
+        \State $\vec s, \vec z := \text{fit\_quantizer}(W, \beta_1)$
+        \State // $\vec s$ for scales, $\vec z$ for zero points
+        \State $\vec s_s, \vec z_s := \text{fit\_quantizer}(\vec s, \beta_2)$
+        \State $\vec s_z, \vec z_z := \text{fit\_quantizer}(\vec z, \beta_2)$
+        \State $\vec s_q := \text{quantize}(\vec{s}, \vec s_s, \vec z_s)$
+        \State $\vec z_q := \text{quantize}(\vec{z}, \vec s_z, \vec z_z)$
+        \State $\mathcal{S} := \mathcal{S} \cup \{s_q, s_s, s_z, z_q, s_z, z_z\}$
+        \State $\hat s := \text{dequantize}(s_q, s_s, s_z)$
+        \State $\hat z := \text{dequantize}(z_q, z_s, z_z)$
+      \State\Return $\hat s, \hat z, \mathcal{S}$
+    \end{algorithmic}
+\end{minipage}
+
+\end{algorithm}
+
+
+\textbf{Implementation details.} Our algorithm also contains several optimizations. 
+As we are using small group sizes, it is often the case that a group contains all positive (or all negative) values. 
+Standard quantizers~\cite{frantar2022obc, frantar2022gptq} require the maximum value to be positive and the minimum value to be negative. 
+For small group sizes, removing this requirement results in slightly better quality. 
+As a by-product of quantizing the quantization statistics, our algorithm allows non-integer zero points. 
+We ablate these and other SpQR components in Section~\ref{sect:experiments}.
+
+
+\subsection{Implementing and Leveraging the Sparse Quantized Representation}\label{sect:method_representation_and_inference}
+
+Our algorithm converts homogeneous weights into several data structures of various sizes and precisions. Overall, the representation consists of (1) quantized weights, (2) first level quantized quantization statistics, second level quantization statistics, and (3) the CSR outlier indices and values. We summarize the overall structure of SpQR in Figure~\ref{fig:spqr} and describe each component below.
+
+\begin{figure}[t]
+    \vspace{-0.5em}
+    \centering
+    % \includegraphics[height=120px]{resources/ph.png}
+    \hspace{-10px}\includegraphics [width=400px] {resources/fig_spqr_v3b.pdf} 
+    \vspace{-8px}
+    \caption{A high-level overview of the SpQR representation for a single weight tensor. The right side of the image depicts all stored data types and their dimensions.}
+    \label{fig:spqr}
+\end{figure}
+
+\textbf{Storing quantized groups.} All non-outlier weights are encoded as a structure that contains: 
+\begin{itemize}
+    \item a $b_w$-bit individual weight;
+    \item a $b_q$-bit scale and zero point for each group of size $B$; 
+    \item $16$-bit statistics for quantizing groups of $B_q$ quantization scales and zero-points. 
+\end{itemize}
+
+As a particular example for a SpQR representation, consider $b_w {=} b_q {=} 3$ and $B_w=B_q=16$. The weight matrix is split into groups of $B_q \times B_w = 256$ weights. A group contains 256 individual $b_w=3$-bit codes. Every 16 weights use a separate 3-bit scale and zero-point. Finally, there are four 16-bit scalars for the entire group used for second level quantization.
+To simplify GPU memory access, we keep the quantized values for outlier weights in place and adjust the 16-bit versions to compensate for that. We also store both quantized weights and quantized quantization statistics in a contiguous memory region for each group. When running on a different hardware (e.g. mobile CPUs), it is possible to further reduce the memory footprint by removing the quantized version of outliers. We leave this direction for future work.
+
+\textbf{Storing outliers.} 
+% n our analysis, we found multiple groups of highly sensitive weights with different structure, including full-column groups, horizontal groups of uneven width and individual outliers. To accommodate all possible structures, we encode outliers individually, in a row-wise arrangement similar to CSR~\cite{todo}.
+Recall that our outliers are unstructured; for storage, we sort them by their row first and column second, so that outliers in the same row are contiguous in memory. 
+For each outlier, we store two scalars: the 16-bit weight value and the 16-bit column index. For each row, we also store a single 32-bit number---the total number of outliers in the rows up to the current one for efficient inference.
+This results in an average storage cost of 32.03 to 32.1 bits per sensitive weight. 
+This could be reduced significantly by grouping outliers, which we leave as future work. 
+% In theory, it is possible to reduce this overhead by grouping outliers
+
+% it is possible to slightly reduce storage overhead by storing some outliers together, as groups. It is also possible to quantize outlier values in less than 16 bit. In this work, we do not explore this direction in order to keep the overall representation simple.
+
+
+\textbf{Inference with SpQR.} 
+To illustrate the practicality of our approach, we design an efficient GPU-based decoding implementation for the SpQR format, focused on the popular token-by-token LLM generation as a use-case.  
+
+We leverage the fact that autoregressive inference on GPUs is memory-bound, so high compression rates can hide decoding overheads, to a significant extent. 
+At a high level, our algorithm loads group statistics and the quantized weights into shared memory (SRAM), dequantizes to 16-bits, and then performs matrix multiplication with 16-bit inputs.
+For handling outliers, we design a sparse matrix algorithm that takes advantage of outliers that occur in rows. Roughly, the algorithm works as follows
+
+First, (1) we divide the matrix into equally sized blocks.
+Then, each GPU core (thread block) (2) loads a large slice of outliers into shared memory (SRAM), and each GPU core (3) determines if outliers are part of the segment or not. The corresponding weights are (4) loaded from main memory; finally, the matrix multiplication is performed.
+
+
+This algorithm essentially performs load balancing through steps (1-3), while step (4) tends to have contiguous memory access due to the row-like patterns for the outliers. We will show in Section~\ref{sect:experiments} that this custom approach is faster than the sparse matrix algorithms in PyTorch.
+
+% note to Dan: i will not change any text, im just watching
+
+% Since GPUs are ubiquitous, we focus here on inference algorithm details for GPUs. To achieve efficient inference of GPUs two requirements need to be met: (1) contiguous memory access, (2) structure memory access so that caching can be used. Since we have a mixed dense-sparse representation the most intuitive way to taking advantage of GPU hardware and their requirements is to have a fused implementation which loads segments of contiguous memory that contains both the dense representation and the sparse representation of each quantization group.
+
+% However, such a fused implementation is highly complex. A simpler and more straightforward solution is to decompose inference into a dense and a sparse computation part which are then added together to perform the full dense-sparse matrix multiplication with quantized weights and full-precision outliers. We follow this approach.
+
+% \textbf{Dense quantize inference.} Since autoregressive inference on a GPU is highly bound by memory bandwidth, a well-performance implementation of dense quantized matrix multiplication is trivial. We load both group statistics and the quantized weights into shared memory (SRAM), dequantize to 16-bits, and then matrix multiply with the 16-bit inputs.
+
+% \textbf{Fast sparse inference.} The problem with sparse inference is that current sparse matrix multiplication approaches can be slow even at high sparsity levels\citep{gale2020sparse}. To overcome these limitations, we design a sparse matrix algorithm that takes advantage of the outliers patterns that we see, in particular outliers that occur in rows. This algorithm works as follows: (1) we divide the matrix into equally sized segments, (2) each GPU core (thread block) loads a large slice of outliers into shared memory (SRAM), (3) each GPU core determines if outliers are part of the segment or not, (4) the corresponding weights are loaded from main memory, (5) perform the matrix multiplication and storage.
+
+% This algorithm essentially performs load balancing through steps (1-3) and (4) has contiguous access more often than not due to the row-like patterns for the outliers. As we demonstrate in Section~\ref{sect:experiments_speed}, this specialized algorithm is faster than regular sparse matrix algorithms as implemented in PyTorch.

@@ -1,0 +1,366 @@
+\documentclass{article}
+
+
+% if you need to pass options to natbib, use, e.g.:
+\PassOptionsToPackage{numbers, compress}{natbib}
+% before loading neurips_2023
+
+
+% ready for submission
+\usepackage[preprint]{neurips_2023}
+
+
+% to compile a preprint version, e.g., for submission to arXiv, add add the
+% [preprint] option:
+%     \usepackage[preprint]{neurips_2023}
+
+
+% to compile a camera-ready version, add the [final] option, e.g.:
+%     \usepackage[final]{neurips_2023}
+
+
+% to avoid loading the natbib package, add option nonatbib:
+%    \usepackage[nonatbib]{neurips_2023}
+
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage[hidelinks]{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{amsmath}
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage[table]{xcolor}  % colors
+\usepackage{graphicx}
+\usepackage{floatrow}
+\usepackage{multirow}       % multirow
+\usepackage{subcaption}     % subcaption
+\usepackage{makecell}       % for multi-row cells in tables
+% \floatsetup[table]{capposition=top}
+\newfloatcommand{capbtabbox}{table}[][\FBwidth]
+\usepackage{algorithm}
+\usepackage{algorithmicx}
+\usepackage[noend]{algpseudocode}
+\newcommand{\KwData}[1]{\textbf{Input:} #1} 
+\newcommand{\KwResult}[1]{\textbf{Output:} #1}
+\renewcommand{\algorithmicrequire}{\textbf{Input:}}
+\renewcommand{\algorithmicensure}{\textbf{Output:}}
+\usepackage{xspace}
+\newcommand{\algname}[1]{{\sc #1}\xspace}
+\usepackage{diagbox}
+\usepackage{tabularx}
+% \usepackage{float}
+% \floatstyle{plaintop}
+% \restylefloat{table}
+
+\usepackage{tikz,tikzscale}  % for tikz figure
+\usetikzlibrary{shapes.arrows}
+
+\renewcommand{\paragraph}[1]{ \noindent \textbf{#1}}
+% \linespread{0.98}
+
+
+\title{\vspace{-4px}SpQR: A Sparse-Quantized Representation for Near-Lossless LLM Weight Compression\vspace{-4px}}
+
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to LaTeX to determine where to break the
+% lines. Using \AND forces a line break at that point. So, if LaTeX puts 3 of 4
+% authors names on the first line, and the last on the second line, try using
+% \AND instead of \And before the third author name.
+
+
+\author{%
+  Tim Dettmers\thanks{Equal contribution} \thanks{Corresponding author: \texttt{dettmers@cs.washington.edu}}\\
+  University of Washington \\
+  \And
+  Ruslan Svirschevski\footnotemark[1] \\
+  HSE University \& Yandex \\
+  \And
+  Vage Egiazarian\footnotemark[1] \\
+  HSE University \& Yandex \\
+  \And
+  Denis Kuznedelev\footnotemark[1] \\
+  Yandex \& Skoltech \\
+  \And
+  Elias Frantar \\
+  IST Austria \\
+  \And
+  Saleh Ashkboos \\
+  ETH Zurich \\
+  \And
+  Alexander Borzunov \\
+  HSE University \& Yandex \\
+  \And
+  Torsten Hoefler \\
+  ETH Zurich \\
+  \And
+  Dan Alistarh \\
+  IST Austria \& NeuralMagic 
+}
+
+
+
+\begin{document}
+
+\maketitle
+
+\vspace{-8px}\begin{abstract}
+    %This is bloated and a bit boring:
+    %The remarkable performance of large-scale generative language models has led to significant interest 
+    %in executing these models on resource-constrained end-user devices. 
+    %While inference is computationally feasible on such devices in generative mode, the memory constraints of  existing massive but accurate models can limit their usability in practice.
+    %
+    %Previous research has shown that these massive models can be represented with just 3-4 bits, but that this comes at the cost of moderate-to-high accuracy loss.
+    %
+    %It remains an open question whether \emph{near-lossless} weight quantization, e.g. within 1\% relative accuracy loss,  is feasible for such models, under similar compression budgets, or whether current compression ratios can still be significantly improved.  
+    %
+    %In this paper, we propose a new hybrid numerical representation, SpQR, which can significantly improve upon existing compression-accuracy trade-offs as well as reaching near-lossless compression of 7-65B parameter models while using less than 4.75 bits per parameter. We justify our proposal given the compression characteristics of existing models, and devise efficient algorithms for converting and decoding this representation.  
+    %
+    %Our proposal, SpQR, works by combining a low-bitwidth uniform quantized representation with a higher-bitwidth, but highly-sparse residual mask, which we show to be especially well-suited for accurate weight quantization of LLMs. Our approach enables the deployment of massive models on resource-constrained end-user devices without degrading the accuracy.
+
+    \vspace{-2px}Recent advances in large language model (LLM) pretraining have led to high-quality LLMs with impressive abilities. 
+    By compressing such LLMs via quantization to 3-4 bits per parameter, they can fit into memory-limited devices such as laptops and mobile phones, enabling personalized use. 
+    However, quantization down to 3-4 bits per parameter usually leads to moderate-to-high accuracy losses, especially for smaller models in the 1-10B parameter range, which are well-suited for edge deployments. 
+    To address this accuracy issue, we introduce the Sparse-Quantized Representation (SpQR), a new compressed format and quantization technique which enables for the first time \emph{near-lossless} compression of LLMs across model scales, while reaching similar compression levels to previous methods. 
+    SpQR works by identifying and isolating \emph{outlier weights}, which cause particularly-large quantization errors, and storing them in higher precision, while compressing all other weights to 3-4 bits, and achieves relative accuracy losses of less than $1\%$ in perplexity for highly-accurate LLaMA and Falcon LLMs. This makes it possible to run 33B parameter LLM on a single 24 GB consumer GPU without any performance degradation at 15\% speedup
+    %faster inference speed,
+    thus making powerful LLMs available to consumer without any downsides. SpQR comes with efficient algorithms for both encoding weights into its format, as well as decoding them efficiently at runtime\footnote{ \href{https://github.com/Vahe1994/SpQR}{\texttt{github.com/Vahe1994/SpQR}}; to be integrated into \href{https://github.com/TimDettmers/bitsandbytes}{\texttt{github.com/TimDettmers/bitsandbytes}}}. Specifically, we provide an efficient GPU inference algorithm for SpQR which yields faster inference than 16-bit baselines at similar accuracy, while enabling memory compression gains of more than 4x.
+    
+    
+    
+    
+    % a state-of-the-art quantization technique which identifies and isolates outliers that cause particularly large quantization errors while all non-outlier are quantized to 3-4 bits. With SpQR, we can perform \emph{near-lossless} quantization of LLMs with less than 4.75 bits per parameter such that we maintain a perplexity within 1\% of 16-bit 7-65B parameter LLaMA and Falcon LLMs. When controlling for bits per parameter SpQR significantly improves upon previous methods such as GPTQ. SpQR is based on insights gained from analysing the structure of outlier weights in the quantization process which shows both partially structured outliers (rows, columns, attention heads), as well as unstructured outliers. SpQR makes use of these structures through a 3-4 bit bilevel quantization scheme with a small group sizes of 8-16 weights per group and 16-bit sparse outliers. We develop a fast GPU inference algorithm for SpQR that yields faster inference than 16-bit baselines.
+
+\end{abstract}
+
+%\vspace{-1.5em}
+\section{Introduction} 
+%\vspace{-0.5em}
+
+Pretrained large language models (LLMs) improved rapidly from task-specific performance \citep{wang2018glue, devlin2018bert, radford2019language}, to performing well on general tasks if prompted with instructions \citep{brown2020language,wei2021finetuned,openai2023gpt}. 
+While the improved performance can be attributed to scaling in training data and parameters \citep{kaplan2020scaling,chowdhery2022palm} recent trends focused on smaller models trained on more data, that are easier to use at inference time~\citep{hoffmann2022training, biderman2023pythia, touvron2023llama}. For example, the 7B parameter LLaMA model trained on 1T tokens achieved an average performance only slightly lower than GPT-3 \citep{brown2020language} despite being 25x smaller. Current techniques for LLM compression can shrink these models further by a factor of about 4x, while preserving their performance \citep{dettmers2022llm,xiao2022smoothquant,frantar2022gptq,dettmers2022case}. This yields performance levels comparable to the largest GPT-3 model, with major reductions in terms of memory requirements. With such improvements, well-performing models could be efficiently served on end-user devices, such as laptops.  
+
+The main challenge is to compress models enough to fit into such devices while also preserving generative quality. 
+Specifically, studies show that, although accurate, existing techniques for 3 to 4-bit quantization still lead to significant accuracy degradation~\cite{dettmers2022case, frantar2022gptq}. 
+Since LLM generation is sequential, depending on previously-generated tokens, small relative errors can accumulate and lead to severely corrupted outputs. 
+To ensure reliable quality, it is critical to design low-bitwidth quantization that does not degrade predictive performance compared to the 16-bit model.
+
+In this work, we introduce Sparse-Quantized Representations (SpQR), 
+a hybrid sparse-quantized format which can compress accurate pretrained LLMs to 3-4 bits per parameter while staying \emph{near-lossless}: 
+specifically, SpQR is the first weight quantization method which is able to reach such compression ratios while 
+inducing end-to-end accuracy error as measured in perplexity of less than 1\% relative to the dense baseline. 
+SpQR works by combining two innovations. 
+First, we isolate \emph{outlier weights}, whose quantization we show to induce disproportionately high errors: these weights are kept in high precision, while the other weights are stored in a much lower, e.g. 3-bit, format.
+Second, we implement a variant of grouped quantization with very small group size, e.g. 16 contiguous elements, 
+but we show that one can quantize the quantization scales themselves to a 3-bit representation.
+
+To convert a given pretrained LLM into SpQR format, 
+we adopt an extended version of the post-training quantization (PTQ) approach recently introduced by GPTQ~\citep{frantar2022gptq}. 
+Specifically, the method passes calibration data through the uncompressed model; 
+to compress each layer, it applies a layer-wise solver with respect to the L2 error between the outputs of the uncompressed model, and those of the quantized weights. 
+% This optimization is done by leveraging Hessian information to influence the rounding decisions, 
+% such that the L2 norm of the compression error between the two layer variants is minimized. 
+Our approach splits this process into two steps: an ``outlier detection'' step, in which we isolate weights whose direct quantization has outsize impact on layer output behavior, and an actual compression step, in which most ($\geq 99\%$) of weights are compressed to low-bitwidth, the outliers are extracted, and the whole representation is rendered more efficient by further compressing the quantization metadata. 
+
+% starts by observing that the GPTQ approach can be re-interpreted as providing an ordering of the weights with respect to their induced quantization error. 
+% Then, we observe that these errors tend to be \emph{well-structured}, in the sense that certain contiguous groups of weights have an outsize contribution towards the total L2 error. 
+
+Our method is motivated by a new analysis showing that LLM weight quantization errors exhibit both vertical and horizontal group correlations, corresponding to systematic large errors corresponding to input feature dimensions and output hidden dimensions. While outlier input features have been observed before~\citep{dettmers2022llm,xiao2022smoothquant}, our work is the first to demonstrate that similar outliers occur \emph{in the weights, for particular output hidden dimensions}. Unlike input feature outliers, the output hidden dimension outliers occur only in small segments for a particular output hidden dimension. 
+
+Our quantization algorithm isolates such outliers and efficiently encodes a given model in SpQR format. 
+To exploit the resulting structure, we develop a specialized sparse-matrix multiplication algorithm based on the compressed sparse row (CSR) format. To use SpQR for token-by-token generation, we combine this sparse algorithm together with a dense-quantized matrix multiplication for 3-4 bit weights. With this, SpQR reduces the memory footprint of LLMs by a factor of about 3.4x or more without degradation in accuracy, measured as language modeling loss or perplexity, while also being 20-30\% faster for LLM generation compared to 16-bit inference. 
+% Thus, SpQR paves the way for \emph{highly-accurate, efficient compressed execution of LLMs} on memory-constrained devices.
+
+\begin{figure}[t!]
+    \vspace{-0.5em}
+    \centering
+    \begin{subfigure}{0.47\linewidth}
+        \includegraphics[width=\linewidth]{resources/quantization_method_comparison.pdf}
+    \end{subfigure}
+       \begin{subfigure}{0.47\linewidth}
+        \includegraphics[width=\linewidth]{resources/quantization_method_comparison_lm_eval.pdf}
+    \end{subfigure}
+    \vspace{-8px}
+    \caption{
+       Compressed LLM performance for LLaMA models. % Denis, shall i keep this sentence or do you have other plans?
+       (\textbf{left}) LM loss on WikiText2 vs model size.
+       (\textbf{right}) Average performance on zero-shot tasks vs model size. 
+    }
+    \label{fig:quantization_method_comparison}
+\end{figure}
+
+% \section{Introduction}\label{sect:intro}
+
+% \begin{itemize}
+%     \item Introduction about promise and challenges of LLMs.
+%     \item Focus on generative mode, motivating weight size as a challenge to edge deployment. 
+%     \item Overview of existing techniques and remaining challenges.
+%     \item Overview of contribution. 
+% \end{itemize}
+
+% \section{Background}\label{sect:background}
+
+% \vspace{-0.7em}
+\section{Related Work}
+% \vspace{-0.5em}
+
+We focus our discussion on related \emph{post-training quantization (PTQ) methods}~\citep{nagel2020up}, referring the reader to the recent survey of Gholami et al.~\citep{gholami2021survey} 
+for full background on quantization. 
+PTQ methods are a popular approach for \emph{one-shot compression} of models with various sizes, based on a limited amount of calibration data, 
+using accurate solvers, usually focused on layer- or group-wise compression sub-problems.
+Most PTQ methods, such as AdaRound~\citep{nagel2020up}, BitSplit~\citep{wang2020towards}, AdaQuant~\citep{hubara2021accurate}, BRECQ~\citep{li2021brecq}, or OBQ~\citep{frantar2022obc}  were designed for vision models or small-scale language models, with less than 100M parameters. 
+% In this line of work, proposed a customized solver inspired by the Optimal Brain Surgeon approach~\cite{lecun1990optimal, hassibi1993optimal} for minimizing the squared error of the layer-wise quantization problems. 
+All these recent approaches tend to use accurate solvers, which would not scale to GPT-scale models in terms of computational or memory cost, as they are 10-1000x larger in size.   
+
+Recently, there has been significant interest in obtaining accurate post-training methods that scale to such massive models. 
+Due to computational constraints, early work such as ZeroQuant~\citep{yao2022zeroquant}, LLM.int8()~\citep{dettmers2022llm}, and nuQmm~\citep{park2022nuqmm} 
+used direct rounding of weights to the nearest quantization level, while customizing the quantization granularity (i.e., group size) to trade off space for increased accuracy. LLM.int8()~\citep{dettmers2022llm} suggested isolating ``outlier features'' which would be quantized separately to higher bit-width. 
+These approaches are able to induce relatively low quantization error, e.g. 5.5\% relative LM Loss increase for LLaMA-7B at 4-bit weight quantization, provided that the quantization granularity is low enough. 
+GPTQ~\cite{frantar2022gptq} proposed a higher-accuracy approach (e.g., 4\% LM Loss increase in the above setting), which works via an approximate large-scale solver for the problem of minimizing the layer-wise squared error.  
+% GPTQ is able to reach fairly accurate 3-bit quantization for low-enough group size. 
+
+Dettmers et al.~\cite{dettmers2022case} provided an in-depth overview of the accuracy-compression trade-offs underlying these methods, 
+establishing that 4-bit quantization is an optimal point for round-to-nearest-based methods,  
+whereas higher compression can be achieved via data-aware methods such as GPTQ. 
+SparseGPT~\cite{frantar2023massive} presented an approach to jointly sparsify LLM weights to medium sparsities, together with quantization of the remaining weights to a fixed given bit-width. 
+One common drawback of existing methods is that the accuracy loss relative to the original model is still significant (see Table~\ref{tab:quantization_method_comparison_LLaMA}). 
+This is especially relevant to relatively small but easily deployable models, e.g. in the 7-13B parameter range, where existing methods show drastic accuracy drops. 
+We investigate this question here, and provide a new compression format which can lead to near-lossless 3-4 bits compression in this regime. 
+
+%The main drawback is that to deploy common high-quality models in the 7-13B parameter range unto memory limited devices a 3-4 bit quantization is needed that incurs a 6-11\% drop in PPL for LLaMA family models. Such degradation in performance can lead to a severe and unpredictable loss in generation quality. As such, it is critial to develop compression schemes that are near-lossless for 3-4 bit quantizations.
+
+A related question is that of performing both activation and weight quantization. 
+There is early work~\cite{dettmers2022llm, xiao2022smoothquant, yao2022zeroquant}, 
+showing that both activations and weights could be quantized to 8-bits with relatively low accuracy impact. 
+These complementary investigations yield interesting insights into the causes of compression error in the case of LLMs. 
+Specifically, \cite{dettmers2022llm, xiao2022smoothquant} observe the presence of ``outlier features'' with significantly higher values in the input/output of large LLMs, which induce higher quantization error, and propose different mitigation strategies. 
+%We analyze this phenomenon from the point of view of weight quantization, and isolate the presence of ``outlier weight blocks'' from the point of view of the quantization error. 
+%Our analysis shows that outlier weight blocks are correlated but do not precisely correspond to outlier features, which motivates the introduction of our fine-grained hybrid compressed weight format. 
+
+We analyze this phenomenon from the point of view of weight quantization. In particular, we investigate the outlier structure, beyond input feature outliers in the weight matrix. While we find that input feature outliers of the current layer are correlated to hidden unit outliers weight in the previous layer there is not a strict correspondence. Such partially-structured outlier patterns necessitate a fine-grained hybrid compression format that goes beyond algorithms that exploit the column structure of outlier features found in previous work.
+
+Hybrid sparse-quantized formats have been investigated generally for deep networks. 
+Some efficient CPU inference engines~\cite{deepsparse, gorbachev2019openvino} support a different block sparse-and-quantized format, 
+in which each block of $4$ consecutive weights is either completely sparse or quantized to 8-bit format, 
+whereas GPUs support a similar compound format in which every group of 4 weights contains 2 zero weights, 
+and the non-zero weights could be quantized. 
+The FBGEMM package~\cite{fbgemm} proposed a format in which certain ``outlier'' weights are quantized separately, 
+to reduce their impact on normalization. 
+However, in this format, ``outlier'' weights are still quantized to exactly the same bit-width (8-bit) as regular weights; 
+moreover, no procedure is given for converting a model to this format post-training. 
+By contrast, 
+1) we provide an efficient and accurate post-training compression algorithm which identifies outliers as weights inducing high output error, 
+2) we propose a format compressing outliers to a higher bit-width relative to regular weights, and 
+3) our format stores outliers in blocks, allowing for efficient implementation of GPU kernels, which we provide as well. 
+
+\vspace{-0.7em}
+\section{Quantization sensitivity of LLM weights}
+\vspace{-0.5em}
+\subsection{Parameter sensitivity under quantization}\label{sect:method_understand}
+\vspace{-0.5em}
+% Not all parameters of a large language models are equally important. If we can find and isolate the most important weights in higher precision, this could lead a quantization with less degradation. In this section, we take a closer look at LLM weight matrices and determine which weights are more sensitive to compression. In particular, we first describe the intuition behind what a sensitive weight is, then we describe how we find sensitive weights with the GPTQ algorithm, and finally we present an overview of patterns of particularly sensitive weights (outlier weights) that we found by using GPTQ algorithm on LLaMA model weights. These results severe as a basis for motivating our main contribution, the SpQR representation. In our analysis section, we provide additional detail of the outlier weight patterns we found.
+
+% Analyzing weight sensitivity can be deceptive: even if a given parameter has large quantization error, modern quantization algorithms can nullify this error by adjusting other parameters~\cite{gptq,deepquant,obc}. Ideally, we should \textit{seek parameters that, when quantized, introduce large irreducible error to model behavior}.
+
+% NOTE: suggested rewrite below, maybe it's a bit too long; I also tried to make it sound as novel as possible
+
+Not all parameters in a neural network are equally important. 
+Intuitively, a weight could be seen as sensitive to quantization if its rounding error is large, i.e. it is not close to a quantization point, and/or the inputs it is usually multiplied with a large, amplifying even a small rounding error. These simple notions of sensitivity however disregard the fact that LLMs operate on very large vectors with significant correlations: a weight $w_a$ may have a large rounding error while being strongly correlated to another weight $w_b$, meaning that the error of rounding up $w_a$ can be well compensated by rounding down $w_b$. This idea is exploited by modern quantization algorithms \cite{frantar2022gptq, yao2022zeroquant} and can lead to major improvements over vanilla rounding, especially a low bitwidths. Properly capturing this aspect of sensitivity requires a more robust definition.
+
+For computational tractability, we assess sensitivity on a per-layer level using a small set of \emph{calibration inputs} $X$, collected by running them through the model up to the particular layer. We define the sensitivity $s_{ij}$ of some weight $w_{ij}$ in the layer's weight matrix $W$ as the minimum squared difference between the original predictions on $X$ and those of any weight matrix $W'$ where this weight is quantized, i.e. $w'_{ij} = \text{quant}(w_{ij})$:
+\begin{equation}
+    s_{ij} = \text{min}_{W'} \, ||WX - W'X||_2^2 \quad \text{s.t.} \quad w'_{ij} = \text{quant}(w_{ij})
+\end{equation}
+Crucially, all weights of $W'$ except for $w'_{ij}$ may take on arbitrary, not necessarily quantized, values in order to compensate for the quantization error incurred by rounding $w_{ij}$, thus capturing the correlation aspect discussed above. Further, as we allow continuous values, this problem admits a closed-form solution. This can be determined by following the generalized Optimal Brain Surgeon framework \cite{frantar2022obc}, where $(XX^\top)^{-1}$ is the inverse Hessian matrix corresponding to the optimization problem:
+\begin{equation}\label{eq:error}
+    s_{ij} = \frac{(w_{ij} - \text{quant}(w_{ij}))^2}{2(XX^\top)^{-1}}.
+\end{equation}
+This saliency measure can be approximated efficiently by quantization solvers, such as GPTQ~\cite{frantar2022gptq}. In more detail, GPTQ quantizes weight matrices column-by-column while in each step adjusting the not-yet-quantized part to compensate for the quantization error in a similar sense as defined above. Consequentially, instead of statically deciding all sensitivities in advance, they can be computed dynamically as the algorithm processes each column, by using the inverse of the Hessian subselection corresponding to all not yet quantized weights. This matrix is already efficiently computed by GPTQ and thus does not impose any additional overheads. The main advantage of this approach is that $s_{ij}$ is always determined based on the most current value of $w_{ij}$ and thus accounts for adjustments due to previously quantized weights as well.
+
+% Following this intuition, we should measure weight's ``sensitivity'' to quantization by how much it increases the output error --- after the remaining weights are adjusted to compensate that error. In other words, high sensitivity means that quantizing a given weight affects model predictions and it cannot be compensated by the chosen compression algorithm.
+
+% Measuring this type of sensitivity can be difficult: a na\"ive approach would require running the quantization algorithm once for every model parameter, of which there are billions. To avoid that, we adopt the OBC compression framework~\cite{frantar2022obc}, where this can be measured efficiently. This is an extension of OBS~\cite{originalOBS} that makes two simplifications: first, it optimizes the L2 error in \textit{layer} predictions, instead of the full model predictions. Second, it compresses weights in a fixed order, and, once compressed, the weight can no longer be changed. Despite these simplifications, OBC achieves state-of-the-art post-training compression solutions for both pruning and quantization.
+
+% Within these two simplifications, we can measure the weight sensitivity in a linear layer by reusing a well-known result\cite{originalOBS}:
+% \begin{equation}\label{eq:error}
+%     S_{i,j} = L(quant_{i,j}(W)) - L(W))
+%     = || W X - quant_{i,j}(W) X ||^2_2
+%     = 2 \cdot \frac{(quant_{i,j}(W)_{i,j} - W_{i,j})^2}{\left[ (X X^T)^{-1} \right]_{j, j} }
+% \end{equation}
+
+% Here, $W\in \mathcal{R}^{m, n}$ denotes a weight matrix of a linear layer with $m$ output units and $n$ input features; $X\in \mathcal{R}^{n, d}$ are the inputs of that layer for $b$ tokens (from multiple input texts). Finally, $quant_{i,j}(W)$ represents quantizing $W_{i, j}$ and updating $W_{k, j} \forall k > j$ to minimize $L(quant_{i,j}(W))$, which also has a closed-form solution~\cite{frantar2022obc}. We use the same procedure for linear layers in both self-attention and MLP components of transformer LLMs.
+
+
+
+
+
+
+
+
+% Still TODO:
+% \begin{itemize}
+%     \item Cover existing work on hybrid formats (there are a couple of papers). 
+%     \item SparseGPT and Runtime approaches? 
+%     \item \url{https://openreview.net/pdf?id=QfLU7FtXDUn}
+%     \item \url{https://arxiv.org/abs/2207.11048}
+% \end{itemize}
+
+
+
+
+
+
+
+
+
+
+% specifically focusing on \post-training quantization 
+
+
+
+
+% % Related Work and Motivating Experiments
+% \begin{itemize}
+%     \item Broad intro on quantization.
+%     \item Overview of existing LLM-centric techniques and challenges.
+% \end{itemize}
+
+
+\input{method.tex}
+
+\input{experiments.tex}
+
+\vspace{-0.7em}
+\section{Discussion \& Limitations}
+\vspace{-0.5em}
+
+We have presented SpQR, an quantization approach which quantizes sensitive outliers in higher precision, to achieve near-lossless 16-bit accuracy with less than 4.75 bits per parameter on average. We achieve even better quality-size-tradeoff when compressing to as little as 3.36 bits which makes SpQR an ideal method for compressing models for memory-limited devices.
+Despite our promising results, there are several limitations. The main limitation is that we do not evaluate the generative quality of quantized LLMs, but only the predictive performance in terms of zero-shot accuracy and perplexity. While we believe that perplexity measurements and generation quality are strongly related, this is a hypothesis we aim to investigate in future work. 
+While we devise a sparse matrix multiplication algorithm to accelerate the computation with outliers, another limitation is that we do not fuse sparse matrix multiplication with regular quantized matrix multiplication. Such an approach would yield even better inference time performance. However, such an approach is also very difficult to implement. We leave the implementation of such an algorithm to future work.
+
+\section{Acknowledgements}
+D.K. was supported by Russian Science Foundation, grant 21-11-00373. 
+D.A. and E.F. gratefully acknowledge funding from the European Research Council (ERC) under the European Union’s Horizon 2020 research and innovation programme (grant agreement No 805223 ScaleML). Authors also thank Ivan Komarov for his help in profiling and understanding the performance bottlenecks of SpQR on GPU. 
+
+% A further limitation is that we discover structured highly sensitive outliers in the model weights, but we offer not explanation as to what these outliers are and what they represent. While these outliers seem to be important for LLM predictive performance it is unclear if they could be removed while preserving performance to enhance quantization precision. We leave this research to future work.
+
+% \section{Broader Impact}
+
+% Our method enables the deployment high quality LLMs in the 7-13B parameters range to memory-limited devices such as laptops and phones. With our method it is possible to develop specialized 7B LLMs in hassle-free 16-bit and then enable the deployment of such LLMs unto phones by applying SpQR. Since SpQR is practically lossless, this ensures a reliable level performance of deployed LLMs which is important for consumer applications. Since mobile phones are ubiquitous and LLMs powerful general purpose tools, SpQR might have a wide-reaching effect on how LLMs are used by the general population to complete useful tasks.
+
+% Since LLMs are an inherent dual-use technology that can be used for either good or bad, the total impact for users is undetermined. However, we believe that the impact will be largely positive since users usually can chose which third-party applications are installed on their phone and as such they can choose to install appliations that are beneficial to them.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\bibliography{main}
+\bibliographystyle{alpha}
+
+\pagebreak
+\input{appendix.tex}
+
+\end{document}

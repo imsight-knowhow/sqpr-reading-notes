@@ -160,3 +160,4 @@ checkpoints/
 models/
 *.parquet
 *.arrow
+tmp/

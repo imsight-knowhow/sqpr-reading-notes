@@ -1,0 +1,500 @@
+% - for each mention of appendix / supplementary in the paper, please create a section here
+% --- note that not all of them have \appendix  tag
+% - add a \label{app:something} with a *best effort* meaningful name
+% - the title and/or comment should reflect what we promised to write there
+% - the order of sections should be the same as in the paper, i.e. the first appendix metnion should refer to A, then B, etc.
+\appendix
+\renewcommand{\contentsname}{Table of contents}
+{\small\setlength{\parskip}{0.05em}\tableofcontents}
+\section{Additional weight sensitivity analysis}\label{app:extra_analysis}
+% note: consider adding pagebreak; optional though; why: to avoid appendix A having the first few lines on a separate page
+
+
+
+In this section, we provide additional visualizations of LLaMA weight sensitivities, as well as additional plots for different layer roles.
+As we observed earlier in Section~\ref{sect:method_llama65}, the sensitivity matrices vary based on four main factors:
+\begin{itemize}
+    \item the quantization scheme (e.g. row- or group-wise);
+    \item the layer depth, i.e. the index of the corresponding transformer block;
+    \item the role of that weight, e.g. self-attn query / key or MLP up / down projection;
+    \item the location within the chosen weight matrix;
+\end{itemize}
+
+Here, we report additional observations about these factors and elaborate on some of our claims from Section~\ref{sect:method_understand}.
+We also report raw sensitivity matrices for various weight matrices at the end of the supplementary materials.
+
+\paragraph{Relation between sensitivity and the chosen quantization scheme.} We compare two configurations of GPTQ 3-bit. The first configuration uses one quantization scale \& zero for each row. The second one uses blockwise quantization with one set of statistics for each block of 128 weights.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.9\linewidth]{resources/qerr_callout_inf_40.pdf}
+    \includegraphics[width=0.9\linewidth]{resources/qerr_callout_128_40.pdf}
+    \caption{The weight sensitivities for LLaMA-65B 40th layer, attention query projection. 
+    The color scale represents sensitivity on a logarithmic scale, with higher sensitivity being darker. \textbf{(top)} 3-bit GPTQ with per-row quantization scales, \textbf{(bottom)} 3-bit GPTQ with block size 128.}
+    \label{fig:analysis_sensitivity_block128}
+\end{figure}
+
+Figure~\ref{fig:analysis_sensitivity_block128} demonstrates a typical example of how group size affects sensitivity. In the bottom-right plot, we observe that a subset of weights (width 128) has a significantly higher quantization error than the rest of the layer. Please note that the color scale represents sensitivity on a logarithmic scale, with higher sensitivity being darker.
+
+On a more detailed examination, we found that this specific group contains a ``vertical'' outlier, i.e. the corresponding input feature has significantly higher variance, compared to other input dimensions.
+
+In this example, the main effect of GPTQ block size 128 is that the problematic dimension leads to increased sensitivity in a group of $8192 \times 128$ weights. In turn, GPTQ with per-row statistics has high quantization error across the entire row.
+
+\textbf{The effect of rotary embeddings.} Earlier in Figure~\ref{fig:patterns} we note that attention query and key have a regular pattern of sensitivity that repeats every 64 rows. We attribute this to the fact that LLaMA uses rotary position embeddings. More specifically, this pattern is likely a side-effect of how rotary embeddings are implemented for this model.
+
+To recall, rotary position embeddings are a technique that rotates attention head dimensions by an angle that depends on how many tokens are between key and query~\cite{su2021roformer}. Furthermore, dimensions within each head are rotated with a different frequency. To implement this rotation, LLaMA multiplies each head by a precomputed tensor of sine and cosine functions with a different period. The first half (64 units) of the matrix is multiplied by cosines and the other half (64 units) is multiplied by sines.
+
+To recall, sine and cosine components are equivalent up to a phase shift and show similar behavior in our analysis. In general, we observe that weights that correspond to low-frequency heads (bottom of each semi-head) typically have higher sensitivity. One possible explanation is that high-frequency heads can be more dependent on position-specific information, such as attending to the previous token --- and less dependent on the weights that represent content information. However, this phenomenon merits further investigation and our current understanding should be treated as an educated guess.
+
+
+\textbf{GPTQ and the effect of quantization order.} As we observe earlier in Section~\ref{sect:method_llama65}, the rightmost weights in each visualization tend to have higher quantization errors. This is likely a side-effect of the GPTQ algorithm, which compresses weights one input feature at a time, i.e. column by column in a left-to-right direction. Once a column is quantized, the algorithm uses the remaining unquantized weights to compensate for the error. Thus, the rightmost batch of weights accumulates the most error from preceding columns and has the least space to compensate it's ``own'' quantization error.
+
+This difference is most pronounced in the earlier layers, where the quantization error is smaller overall (see Figure~\ref{fig:sensitivity_left2right}). To further verify this observation, we observe that this effect disappears if we shuffle the weight quantization order in the GPTQ algorithm.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.7\linewidth]{resources/qerr_sides_hist_mlp_up_inf_79.pdf}
+    % \includegraphics[width=0.5\linewidth]{resources/qerr_callout_inf_40.pdf}
+    % \includegraphics[width=0.5\linewidth]{resources/qerr_callout_128_40.pdf}
+    \caption{The weight log-sensitivities for a deeper upward projection layer (in particular, this is layer \#79). The heatmap on the left represents the sensitivities of each weight, with darker being more sensitive; the histogram on the right captures the sensitivities in the first 100 and last 100 columns (sorted across input dimensions). The latter figure clearly shows that later columns are more sensitive on average.}
+    \label{fig:sensitivity_left2right}
+\end{figure}
+
+\textbf{Relation between weight sensitivity and layer depth.} 
+In terms of mean squared error, we observe that the first layers of LLaMA tend to have generally lower OBC error (defined as L2 distance between original and quantized layer predictions).
+% However, the difference in OBC error does not guarantee that these layers are easier to quantize or less ``important''.
+%Instead, early layers seem to have generally lower output variance. 
+To illustrate this, we report the average quantization error of GPTQ-3bit in Figure~\ref{fig:error_by_depth}.
+
+\begin{figure}[h]
+    \centering
+    % \vspace{-15px}
+    \includegraphics
+        [width=\linewidth]
+        {resources/avg_quant_error.pdf}
+    \caption{Figure: mean quantization error (vertical axis) as a function of layer depth (horizontal axis). Each plot corresponds to a different layer role.}
+    \label{fig:error_by_depth}
+\end{figure}
+
+The absolute quantization error means little by itself since each quantized layer has a different input/output variance. However, we also observe that the first and last few layers have qualitative differences in behavior. Figures~\ref{fig:sensitivities_3x7_noblock} and~\ref{fig:sensitivities_3x7_block128} report weight sensitivities for the first, middle (40th), and last (79th) layer of LLaMA model separately to better illustrate this difference.
+
+
+\section{Experimental Configurations}\label{app:configs}
+
+
+The SpQR representations proposed in this work have several adjustable hyperparameters that allow for great flexibility in targeting a desired size of the model. 
+We introduce the notation and list the method hyperparameters below:
+
+\begin{itemize}
+    \item $b_{w}$ - number of bits per weight
+    \item $b_{s}$ - number of bits per scale
+    \item $b_{z}$ - number of bits per zero
+    % \item $B$ - size of block for quantization
+    % \item $B_q$ - size of the block for quantization of quantized statistics (scales and zeros)
+    \item $r_o$ - outlier rate (fraction of weights that are not quantized) 
+    \item $\beta_1$ - block size for weight quantization
+    \item  $\beta_2$ - block size for statistic quantization;
+    \item $\tau$ - outlier threshold
+\end{itemize}
+
+The actual number of outliers depends not only on $\tau$, but on all other hyperparameters as well. However, for any specific configuration, increasing $\tau$  leads to reduced number of outliers. To achieve the desired number of outliers, we tune $\tau$ in $[0.1, 1.0]$ range by binary search with minumum step size $0.05$. The vast majority of our configurations are between $\tau=0.1$ and $\tau=0.45]$.
+
+The full configuration we use to compress LLaMA-30B model near-losslessly in Table~\ref{tab:quantization_method_comparison_LLaMA} has the following hyperparameters: $b_w=4, b_s=b_z=3, \beta_1=\beta_2=16, \tau=0.1$ This translates to the following command line arguments in our supplementary code:
+
+\begin{verbatim}
+python main.py $MODEL custom --custom_data_path=$DATA  \
+    --wbits 4 --groupsize 16 --perchannel --qq_scale_bits 3  \
+    --qq_zero_bits 3 --qq_groupsize 16 --outlier_threshold 0.1 \
+    --fit_quantizer_without_outliers --permutation_order act_order  
+\end{verbatim}
+
+\section{Hyperparameter sensitivity}\label{app:hyperparameter}
+
+%In 342 line We promised to provide additional hyper parameter study.
+
+In this section, we analyze how SpQR performance depends on the choice of quantization group sizes.
+Please recall that the SpQR algorithm uses two types of groups, indexed by parameters $\beta_1$ and $\beta_2$.
+The first group dimension $\beta_1$ covers multiple weights for the same input unit, similar to standard blockwise quantization. In turn, the other dimension $\beta_2$ covers multiple output units, and is used when quantizing quantization scales. In our visualizations, $\beta_1$ blocks are always horizontal, while $\beta_2$ are vertical. 
+
+In Table~\ref{tab:groupsize_analys}, we evaluate SpQR with varying parameters $\beta_1$ and $\beta_2$. We quantize LLaMA-65B with 3-bit SpQR for weights and statistics and report perplexity on WikiText2, Penn Treebank, and C4 datasets. The upper-left section of the table contains the effective number of bits for each group configuration, and the remaining sections correspond to perplexities on different datasets.
+\begin{table}[h!]
+    \vspace{-0.5em} 
+    \normalsize
+    \centering
+    \setlength\tabcolsep{4pt}
+    \begin{tabular}{c|cccccc|cccccc|}
+                 & \multicolumn{6}{c|}{\textbf{Average bits}} & \multicolumn{6}{c|}{\textbf{Wikitext2 Perplexity (3.53)}}  \\
+         \midrule
+         \backslashbox{$\beta_1$}{$\beta_2$}         & 4     & 8     & 16     & 32     & 64     & 128     & 4     & 8      & 16     & 32     & 64     &     128 \\
+
+          \midrule
+          4 & 8.5	& 6.5 & 5.5 & 5 & 4.75 & 4.625 & 3.581 & 3.628 & 3.715 & 3.822 & 4.003 & 4.23\\
+          8 & 5.75 & 4.75 & 4.25 & 4 & 3.875 & 3.813 & 3.625 & 3.64 & 3.649 & 3.666 & 3.688 & 3.713\\
+          16 & 4.375 & 3.875 & 3.625 & 3.5 & 3.438 & 3.406 & 3.701 & 3.71 & 3.728 & 3.726 & 3.739 & 3.741\\
+          32 & 3.688 & 3.438 & 3.313 & 3.25 & 3.219 & 3.203 & 3.803 & 3.797 & 3.812 & 3.812 & 3.815 & 3.85\\
+          64 & 3.344 & 3.219 & 3.156 & 3.125 & 3.109 & 3.102 & 3.884 & 3.901 & 3.907 & 3.899 & 3.928 & 3.926\\
+          \vspace{1 em}
+          128 & 3.172 & 3.109 & 3.078 & 3.063 & 3.055 & 3.051 & 3.982 & 3.994 & 4.005 & 3.992 & 4.017 & 4.013\\
+
+        % \midrule
+         & \multicolumn{6}{c|}{\textbf{C4 Perplexity (5.62)}} & \multicolumn{6}{c|}{\textbf{PTB Perplexity (6.91)}}  \\
+         \midrule
+          \backslashbox{$\beta_1$}{$\beta_2$}     & 4     & 8     & 16     & 32     & 64     & 128     & 4     & 8      & 16     & 32     & 64     &     128 \\
+          \midrule
+          4 & 5.652 & 5.674 & 5.718 & 5.796 & 5.919 & 6.119 & 6.934 & 6.965 & 7.001 & 7.054 & 7.194 & 7.395\\
+          8 & 5.683 & 5.688 & 5.696 & 5.703 & 5.709 & 5.718 & 6.962 & 6.98 & 6.991 & 6.99 & 6.979 & 7.029\\
+          16 & 5.735 & 5.735 & 5.735 & 5.738 & 5.741 & 5.749 & 7.018 & 7.013 & 7.015 & 7.016 & 7.012 & 7.03\\
+          32 & 5.793 & 5.789 & 5.792 & 5.796 & 5.794 & 5.802 & 7.042 & 7.053 & 7.083 & 7.043 & 7.069 & 7.083\\
+          64 & 5.857 & 5.859 & 5.858 & 5.866 & 5.863 & 5.866 & 7.084 & 7.129 & 7.137 & 7.118 & 7.137 & 7.12\\
+          128 & 5.932 & 5.931 & 5.935 & 5.939 & 5.944 & 5.936 & 7.185 & 7.197 & 7.232 & 7.234 & 7.217 & 7.199\\
+    \end{tabular}
+    \caption{Weight block size $\beta_1$ and statistic block size $\beta_2$  performance on WikiText2, C4, and Penn Treebank (PTB). The uncompressed baseline value is provided in the corresponding heading.}
+    \label{tab:groupsize_analys}
+\end{table}
+
+\section{Estimating model size}\label{app:modelsize}
+
+% We compare the performance of 
+% different quantization methods and choices of hyperparameters in 
+In this section, we provide a quick way to estimate the compressed model size before running the quantization. We express this estimate in
+terms of \emph{average bits per parameter} defined as:
+\begin{equation}
+\overline{b} = 
+\frac{\mathrm{model\ size\ in\ bits}}{\mathrm{number\ of\ parameters}}
+\end{equation}
+
+Where $\mathrm{model\ size\ in\ bits}$ denotes the total amount of memory - the 
+quantized weights, 1st-order and 2nd-order quantization statistics, outliers and the outlier index - required
+for the storage of the model. According to Section \ref{sect:method_representation_and_inference}, 
+each outlier requires memory storage of $\sim 32$ bits. 
+
+% Naturally, outliers also affect the resulting number of bits. Using the storage method described in Section~\ref{sect:method_representation_and_inference}, each outlier takes up slightly less than 32.1 bits of storage. As a result, a model with 0.3\% outliers will have $\approx 0.16$ extra bits per parameter.
+
+%%% Explain the quantization scheme. 
+
+The storage and computational cost in transformer models are dominated by the linear projections
+in the attention and feedforward blocks. Consider quantization of a weight matrix (any of these) $\mathbb{R}^{d_{\mathrm{out}} \times d_{\mathrm{in}}}$ with input dimension $d_{\mathrm{in}}$
+and output dimension $d_{\mathrm{out}}$. Then the average number of bits for a given configuration is:
+
+\begin{equation}
+\overline{b} \simeq 
+\frac{
+b_{w} d_{\mathrm{out}} d_{\mathrm{in}} + 
+(b_{s} + b_{z}) \frac{d_{\mathrm{out}} d_{\mathrm{in}}}{\beta_1} + 
+2 (16 + 16) \frac{d_{\mathrm{out}} d_{\mathrm{in}}}{\beta_1 \beta_2}
+}
+{d_{\mathrm{out}} d_{\mathrm{in}} } + 32 r_o = 
+b_{w} + \frac{b_{s} + b_{z}}{\beta_1} + \frac{64}{\beta_1 \beta_2} + 32 r_o
+\end{equation}
+
+Therefore, to increase (decrease) the size of the model one 
+should either increase (decrease) the precision of model weights and quantization statistics
+or decrease (increase) the block size.
+
+For example, for configuration with $b_w = 3, b_s=3, b_z=3, \beta_1=16, \beta_2=32$ and $0.4\%$ of outliers, the average number of bits is:
+
+$$
+3 + \frac{3 + 3}{16} + \frac{64}{16 \cdot 32} + 0.004 \cdot 32 \simeq 3.63
+$$
+
+\section{Choice of optimal configuration for fixed average number of bits}
+
+As discussed above our method has multiple options for improvement of model performance at the cost of the 
+increase of the model size: number of bits per weight $w_b$, groupsizes $b_1$ and $b_2$ for 1st and 2nd order quantization and the
+outlier rate. We evaluated several configurations with various options for the aforementioned parameters on perplexity benchmarks. 
+Results are presented on Figure \ref{fig:wikitext2_vs_wbits_avg_vs_outlier_shape}. 
+One can observe that small groups and small fraction of outliers allows to considerably improve model performance, 
+but the gain is diminishing with the number of bits added (when the additional budget from small group is of order 0.1-0.5 of bits per parameter).
+It is better to store weights in higher precision instead of keeping them in lower precision but with very small groups or 
+keeping large fraction of outliers. In our experiments optimal fraction of outliers is 0.2-0.5\% depending on the model and groupsize.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.8\linewidth]{resources/wikitext2_vs_wbits_avg_vs_outlier_shape.pdf}
+    \caption{Perplexity of WikiText2 vs average number of bits. Different markers denote different $b_{w}$. Black colors correspond to quantization configurations without outliers and the brightness of the color is proportional to the outlier rate. }
+    \label{fig:wikitext2_vs_wbits_avg_vs_outlier_shape}
+\end{figure}
+
+\section{Additional results for near-lossless compression}\label{app:lossless_compression}
+
+In this section we report the list of quantization configurations for OPT in Table \ref{tab:quantization_method_comparison_OPT}  on WikiText2, Penn Treebank, and C4 datasets. 
+
+In addition we report results for LM eval harness for LLaMa Table \ref{tab:quantization_method_comparison_LM_eval_LLaMA}.
+and recently released \href{https://falconllm.tii.ae}{Falcon} models - Falcon-7B and Falcon-40B Table \ref{tab:quantization_method_comparison_LM_eval_Falcon}.
+
+
+\begin{figure}
+\vspace{-0.5em}
+\footnotesize
+% \scriptsize
+\centering
+\setlength\tabcolsep{4pt}
+\begin{floatrow}
+\capbtabbox{%
+\renewcommand{\arraystretch}{1.15}
+
+\begin{tabular}{lccccc}
+ % \multicolumn{4}{c}{LLAMA}
+  \multicolumn{2}{l}{\bf{OPT}}  & \multicolumn{4}{c}{}\\
+
+ \toprule
+ \bf{Size} & \bf{Method} & \bf{Avg bits} & \bf{Wiki2} & \bf{C4} & \bf{PTB}\\
+ \midrule
+ % \midrule
+
+ \multirow{5}{*}{6.7B} & -- & 16.00 & 10.86 & 11.74 & 13.09\\
+  & SpQR & 4.27 & 10.81 & 11.88 & 13.17\\\cmidrule{2-6}
+ & RTN & 4 & 12.10 & 13.38 & 16.09\\
+ & GPTQ & 4 & 11.39 & 12.15 & 13.80\\
+ & SpQR & 3.94 & 11.04 & 11.98 & 13.33\\
+ \midrule
+ \multirow{5}{*}{13B} & -- & 16.00 & 10.12 & 11.20 & 12.34\\
+  & SpQR & 4.27 & 10.22 & 11.27 & 12.41\\\cmidrule{2-6}
+ & RTN & 4 & 11.32 & 12.35 & 15.4\\
+ & GPTQ & 4 & 10.31 & 11.36 & 12.58\\
+ & SpQR & 3.93 & 10.28 & 11.34 & 12.52\\
+ \bottomrule
+ \end{tabular}
+ \hfill
+ \begin{tabular}{lccccc}
+\multicolumn{6}{c}{}\\
+ \toprule
+  \bf{Size} & \bf{Method} & \bf{Avg bits} & \bf{Wiki2} & \bf{C4} & \bf{PTB}\\
+ \midrule
+ \multirow{5}{*}{30B} & -- & 16.00 & 9.56 & 10.69 & 11.84\\
+  & SpQR & 4.26 & 9.50 & 10.73 & 11.88\\\cmidrule{2-6}
+ & RTN & 4 & 10.97 & 11.90 & 14.17\\
+ & GPTQ & 4 & 9.63 & 10.80 & 11.98\\
+ & SpQR & 3.94 & 9.54 & 10.78 & 11.93\\
+ \midrule
+ \multirow{5}{*}{66B} & -- & 16.00 & 9.33 & 10.28 & 11.36\\
+  & SpQR & 4.23 & 9.37 & 10.32 & 11.40\\\cmidrule{2-6}
+ & RTN & 4 & 110 & 249 & 274\\
+ & GPTQ & 4 & 9.55 & 10.50 & 11.58\\
+ & SpQR & 3.91 & 9.32 & 10.35 & 11.43\\
+ \bottomrule
+\end{tabular}
+}
+{
+  \caption{Perplexity on WikiText2~\cite{wikitext103}, C4~\cite{C4} and Penn Treebank~\cite{PTB} for SpQR and round-to-nearest (RTN) and GPTQ baselines with OPT. We can see that SpQR reaches performances within 1\% of the perplexity with less than 4.3 bits per parameter. We also see that for 4-bits per parameter SpQR significantly improves on GPTQ with an improvement as large as the improvement from RTN to GPTQ.}%
+  \label{tab:quantization_method_comparison_OPT}
+}  
+\end{floatrow}
+\end{figure}
+
+
+\begin{figure}
+\vspace{-0.5em}
+\footnotesize
+\centering
+\setlength\tabcolsep{4pt}
+\begin{floatrow}
+\capbtabbox{%
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{lcccccccc}
+  \multicolumn{2}{l}{\bf{LLaMA}}  & \multicolumn{7}{c}{}\\
+ \toprule
+ \bf{Size} & \bf{Method} & \bf{Avg bits} & \bf{Winogrande} & \bf{Piqa} & \bf{Hellaswag} & \bf{Arc easy} & \bf{Arc challenge} & \bf{Avg score}\\
+ \midrule
+															
+ \multirow{5}{*}{7B} & -- & 16.00 & 67.09 & 78.32 & 56.41 & 67.38 & 38.23 & 61.492\\
+  & SpQR & 4.63 & 67.48 & 78.45 & 56.01 & 67.13 & 38.23 & 61.460\\\cmidrule{2-9}
+ & RTN & 4 & 64.72 & 76.44 & 53.49 & 63.51 & 36.60 & 58.952\\
+ & GPTQ & 4 & 65.35 & 77.58 & 54.99 & 63.55 & 36.35 & 59.564	\\
+ & SpQR & 3.45 & 67.48 & 78.13 & 55.27 & 65.87 & 38.05 & 60.960\\
+ \midrule
+ \multirow{5}{*}{13B} & -- & 16.00 & 70.09 & 78.89 & 59.11 & 74.54 & 43.94 & 65.314\\
+  & SpQR & 4.63 & 69.77 & 78.94 & 59.02 & 74.37 & 43.17 & 65.054\\\cmidrule{2-9}
+ & RTN & 4 & 69.61 & 78.24 & 57.34 & 72.56 & 42.58 & 64.066\\
+ & GPTQ & 4 & 69.06 & 78.40 & 58.04 & 73.23 & 43.26 & 64.398\\
+ & SpQR & 3.45 & 68.90 & 78.73 & 58.22 & 73.27 & 42.75 & 64.374\\
+  \midrule
+ \multirow{5}{*}{30B} & -- & 16.00 & 72.93 & 80.96 & 62.66 & 75.34 & 46.76 & 67.730\\
+  & SpQR & 4.69 & 72.93 & 81.01 & 62.50 & 76.05 & 47.18 & 67.934\\\cmidrule{2-9}
+ & RTN & 4 & 72.06 & 79.05 & 60.61 & 70.66 & 42.24 & 64.924\\
+ & GPTQ & 4 & 72.61 & 79.92 & 61.07 & 71.8 & 44.28 & 65.936\\
+ & SpQR & 3.49 & 73.32 & 80.47 & 61.96 & 74.75 & 46.93 & 67.486\\
+ \midrule
+ \multirow{5}{*}{65B} & -- & 16.00 &77.43 & 81.50 & 63.95 & 75.17 & 47.10 & 69.030\\
+  & SpQR & 4.71 & 76.95 & 81.56 & 63.76 & 75.25 & 46.93 & 68.890 \\\cmidrule{2-9}
+ & RTN & 4 & 75.14 & 81.45 & 62.79 & 72.64 & 44.97 & 67.398\\
+ & GPTQ & 4 & 75.85 & 80.79 & 62.91 & 74.20 & 46.59 & 68.068\\
+ & SpQR & 3.52 & 76.09 & 81.18 & 63.54 & 74.37 & 45.05 & 68.046\\
+ \bottomrule
+ \end{tabular}
+
+}
+{
+  \caption{LM eval harness results on LLaMA models.}%
+  \label{tab:quantization_method_comparison_LM_eval_LLaMA}
+}  
+\end{floatrow}
+\end{figure}
+
+
+
+
+
+\begin{figure}
+\vspace{-0.5em}
+\footnotesize
+\centering
+\setlength\tabcolsep{4pt}
+\begin{floatrow}
+\capbtabbox{%
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{lcccccccc}
+  \multicolumn{2}{l}{\bf{Falcon}}  & \multicolumn{7}{c}{}\\
+ \toprule
+ \bf{Size} & \bf{Method} & \bf{Avg bits} & \bf{Winogrande} & \bf{Piqa} & \bf{Hellaswag} & \bf{Arc easy} & \bf{Arc challenge} & \bf{Avg score} \\
+ \midrule								
+ \multirow{5}{*}{7B} & -- & 16.00 & 67.32 & 79.49 & 57.77 & 74.71 & 40.1	0 & 63.878 \\
+ & SpQR & 4.44 & 67.09 & 79.16 & 57.21 & 73.86 & 38.99 & 63.262 \\\cmidrule{2-9}
+ & RTN & 4.00 & 65.51 & 77.37 & 51.86 & 68.69 & 33.7	& 59.426 \\
+ & GPTQ & 4.00 & 66.38 & 79.11 & 56.68 & 73.15 & 38.48 & 62.760 \\
+ & SpQR & 3.49 & 67.88 & 79.54 & 57.08 & 74.03 & 39.08 & 63.522 \\
+ \midrule
+ \multirow{5}{*}{40B} & -- & 16.00 & 76.62 & 82.32 & 64.06 & 82.03 & 50.26 & 71.058 \\
+ & SpQR & 4.46 & 76.48 & 82.1 & 63.8 & 81.78	& 50.77 & 70.986 \\\cmidrule{2-9}
+ & RTN & 4.00 & 75.69 & 80.30 & 60.52 & 79.92 & 49.83 & 69.252 \\
+ & GPTQ & 4.00 & 75.93 & 81.23 & 63.05 & 80.85 & 50.00 & 70.212 \\
+ & SpQR & 3.45 & 76.32 & 81.77 & 63.70 & 81.10 & 49.83 & 70.544 \\
+ \bottomrule
+ \end{tabular}
+}
+{
+  \caption{LM eval harness results on Falcon models.}%
+  \label{tab:quantization_method_comparison_LM_eval_Falcon}
+}  
+\end{floatrow}
+\end{figure}
+
+
+%      \\\\\         \\\\\
+%     \\\\\\\__o    \\\\\\\__.
+%   __\\\\\\\'/_____\\\\\\\'/___
+% this area is infested with hedgehogs; proceed with caution
+
+\section{Choice of optimal LLM configuration for specific hardware}\label{app:hardware_considerations}
+
+In the preceding discussion, we were searching for optimal model configuration given some 
+compression target without targeting any specific hardware or device. However, the 
+question practitioner willing to deploy a model for a specific application would ask is:
+What is the best model and compression setup for a given memory constraint? 
+
+In this section, we provide a list of recommendations for the choice of the best LLaMA model and the corresponding 
+compression level
+that fits into the device memory (RAM or VRAM) without the need of offloading model parameters and activations.
+We cover a range of available budgets from mobile devices to high-end workstation GPUs.
+Recommendations are presented in Table~\ref{tab:hardware_considerations}.
+
+\begin{table}[h!]
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+Device & Memory (GiB) & LLaMA & $\overline{b}$ \\
+\midrule
+iPhone13 & 4 & 7B & $\leq 3.5$ \\
+\midrule
+\multirow{2}{*}{iPhone14} & \multirow{2}{*}{6} & 7B & $\simeq 4.5$  \\
+ & & 13B & $\leq3.5$ \\
+\midrule
+Consumer laptop & 8 & 13B & $\leq 4$ \\
+\midrule
+RTX4070 & 10-12 & 14B & $\simeq 4.5$ \\
+\midrule
+RTX4080 & 16 & 30B & $\leq 4$ \\
+\midrule
+RTX4090 & 24 & 30B & $\simeq 4.5$ \\
+\midrule
+V100 & 32 & 65B & $\leq 3.5$ \\
+\midrule
+A6000 & 48 & 65B & $\simeq 4.5$ \\
+\bottomrule
+\end{tabular}
+\caption{Choice of the best LLaMA for a given memory constraint.}
+\label{tab:hardware_considerations}
+\end{center}
+\end{table}
+
+
+
+\section{Sensitivity to random seed}\label{app:randomseed}
+
+The experiments we report throughout Section~\ref{sect:experiments} use one fixed random seed (the default value from the supplementary code). To verify that our results are robust to randomness, we run SpQR with 5 random seeds (0-5) and measure the adjusted standard deviation.
+
+For this evaluation, we compress LLaMA-65B with SpQR using $b_w=b_z=b_s=3$ and $\beta_1=\beta_2=16$, which corresponds to 3.625 bits per parameter. The resulting perplexity scores are $3.75\pm0.003$ (WikiText2), $7.03\pm0.01$ (Penn Treebank) and $5.75\pm0.00086$ (C4). In addition to the chosen random seed, these standard deviations can be affected by the inherent nondeterminism of GPU computation. Overall, the standard deviations are at least one order of magnitude smaller than the difference between SpQR, GPTQ, and RTN.
+
+
+
+\section{Generative examples}\label{app:examples}
+Finally, we showcase several examples of how SpQR quantization affects the generated samples. For this evaluation, we take several prompts and use the compressed language model to continue generating text from these prompts. We compare the original LLaMA-65B and two quantized versions: SpQR and RTN-4bit. More specifically, we use the SpQR configuration that corresponds to near-lossless compression from Table~\ref{tab:quantization_method_comparison_LLaMA}. We use greedy autoregressive inference for all generated samples to ensure reproducibility.
+The examples in Figure~\ref{fig:examples_txt_gen_4} show that all models produce a valid text, but SpQR matches the 16-bit model more frequently. The near-lossless algorithm also seems to produce more semantically similar texts. % However, it is unclear whether or not there is a statistically significant difference.
+
+
+\begin{figure} { \tt \footnotesize \begin{tabularx}{\linewidth}{r X} \toprule Prompt: &  Every time data scientist Kim ran her new algorithm, it kept outputting the same unexpected result: a recipe for \\ 
+ \midrule 16bit: & iced tea.  Kim was working on a project to predict the likelihood of a patient being readmitted to the hospital within 30 days of discharge. She was using a machine learning algorithm to analyze the data, and the algorithm  \\ 
+ 
+ SpQR: &  iced tea.  Kim was working on a project to predict the likelihood of a patient being readmitted to the hospital within 30 days of discharge. She had been given a dataset of 100,000\\ 
+ 
+ RTN 4-bit: & iced tea.  “I’m not sure what’s going on,” she said. “I’ve been running it for days, and it keeps giving me the same result.”  “I’m not sure what’s going on
+\\  \end{tabularx} }  
+{ \tt \footnotesize \begin{tabularx}{\linewidth}{r X} \toprule Prompt: &  Data scientist Grace was working late one night when she discovered a glitch in the matrix of her data. It spelled out \\ 
+ \midrule 16bit: & 100\% proof that the world was going to end in 10 days.  She tried to tell her boss, but he didn’t believe her.  She tried to tell her friends, but they didn’t believe her  \\ 
+ 
+ SpQR: &  100\% proof that the world was going to end in 10 days.  She tried to tell her boss, but he just laughed and said, “I’m not going to believe in some data glitch.”  She\\ 
+ 
+ RTN 4-bit: &   100\% in binary code.  She was so excited she ran to tell her boss, but he was busy.  She ran to tell her colleague, but he was busy.  She ran to tell her friend, but she
+\\ \end{tabularx} } \\ { \tt \footnotesize \begin{tabularx}{\linewidth}{r X} \toprule Prompt: &  Last Tuesday, just as the sun was setting, my neighbor's dog, Rover, started to speak to me in perfect French. He said  \\ 
+ \midrule 16bit: & "Je suis un chien." I was shocked. I said, "Moi aussi."  I'm not sure what to make of this. I'm not sure what to make of anything.  I'm not sure what  \\ 
+ 
+ SpQR: &  "Je suis un chien." I was shocked. I said, "Rover, you can speak French?" He said, "Oui, je parle francais." I said, "How did you learn to speak French?"\\ 
+ 
+ RTN 4-bit: &   "Bonjour, Monsieur. Je m'appelle Rover. Je suis un chien. Je suis un chien français. Je suis un chien français qui parle français. Je suis un chien français qui parle français
+\\  \end{tabularx} }  
+ { \tt \footnotesize \begin{tabularx}{\linewidth}{r X} \toprule Prompt: &  In a parallel universe where cats are the rulers of Earth, our feline king was pondering his first decree \\ 
+ \midrule 16bit: & " to make all dogs illegal.  "I"m not sure that"s a good idea," said his chief adviser, a cat named Whiskers.  "Why not?" asked the king.  "Because,  \\ 
+ 
+ SpQR: &  " to make all dogs illegal.  "I"m not sure that"s a good idea," said his chief adviser, a cat named Whiskers.  "Why not?" asked the king.  "Because,\\ 
+ 
+ RTN 4-bit: &  " to make the world a better place for cats.  He was about to sign the decree when he was interrupted by a knock on the door.  "Come in," he said.  The door opened and a cat entered.
+\\ \bottomrule \end{tabularx} }  \caption{Texts generated by different quantized LLaMA-65B models with the same prompt.}  \label{fig:examples_txt_gen_4}  \end{figure}%%%----------
+
+
+\begin{figure}[h!]
+    \centering
+    \vspace{-20px}
+    \includegraphics
+        [height=21.5cm]
+        % [width=\linewidth * 0.5]
+        {resources/qerr_7x3_inf.pdf}
+    \vspace{-5px}
+    \caption{A grid of weight log-sensitivities for LLaMA-65B for 3-bit GPTQ compression with per-row quantization statistics. Each row corresponds to a specific layer type (e.g. attention query, mlp gate), and the columns represent layer depth.}
+    \label{fig:sensitivities_3x7_noblock}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    \vspace{-20px}
+    \includegraphics
+        % [width=\linewidth]
+        [height=21.5cm]
+        {resources/qerr_7x3_128.pdf}
+    \vspace{-5px}
+    \caption{A grid of weight log-sensitivities for LLaMA-65B for 3-bit GPTQ compression with group-wise quantization of block size 128. Each row corresponds to a specific layer type (e.g. attention query, mlp gate), and the columns represent layer depth.}
+        \label{fig:sensitivities_3x7_block128}
+
+\end{figure}
+
+\section{Broader impact}\label{app:broader_impact}
+Our method enables the deployment of high-quality LLMs in the 7-13B parameters range to memory-limited devices such as laptops and phones. With our method, it is possible to develop specialized 7B LLMs in hassle-free 16-bit and then enable the deployment of such LLMs to phones by applying SpQR. Since SpQR is practically lossless, this ensures a reliable performance level for deployed LLMs which is important for consumer applications. Since mobile phones are ubiquitous and LLMs powerful general-purpose tools, SpQR might have a wide-reaching effect on how LLMs are used by the general population to complete useful tasks.
+
+%Since LLMs are an inherent dual-use technology that can be used for either good or bad, the total impact on users is undetermined. 
+LLMs are inherently a dual-use technology that can bring both significant benefits and serious harm. The ethical and societal risks of LLMs range from deliberate malicious use (e.g. generating spam) and accidental misuse to adverse economic side-effects~\cite{weidinger2021ethical}.
+% However, we believe that the impact will be largely positive since users usually can choose which third-party applications are installed on their phone and as such they can choose to install applications that are beneficial to them.
+However, we believe that the marginal impact of SpQR will be positive or neutral since the LLMs we use are already openly available. Better quantization algorithms like SpQR let users with low-end devices run larger and generally more accurate language models. In other words, our algorithm does not create models with new capabilities (and risks): it only makes existing models more accessible.
+
+\section{On the use of LLMs in this work}
+Following the request in this year's call for papers, we describe the use of large language models in our paper. We used two different chat-based language models: ChatGPT and Claude+. We used these models to accelerate the process of writing LaTeX code in Alg.~\ref{alg:main} and Figure~\ref{fig:spqr} (via Tikz). We also used these LLMs to provide slight improvements to the table design throughout the paper.
+
+In addition to this, we use ChatGPT to generate some prompts for Appendix~\ref{app:examples}. Finally, we used Claude+ to produce possible formulations for the outlier criterion in Alg.~\ref{alg:main}. In all these cases, we used LLMs through chat-based user interfaces, instructing them to generate code (LaTeX) or suggest improvements. If the suggested changes would not work as expected, we reported them to the model in natural language, using the same chat-based interface.

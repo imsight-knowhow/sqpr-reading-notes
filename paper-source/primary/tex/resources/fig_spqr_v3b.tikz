@@ -1,0 +1,170 @@
+
+    \def\xlinecolor{black!70}
+    \def\uu{0.16}                        % UNIT
+    \def\xcellsizez{\uu * 0.6}
+    \def\xaxisfontsize{5}
+    
+    \newcommand{\drawgrid}[9]{
+    % draws 3d box with grid
+    % #1 = starting x coordinate
+    % #2 = starting y coordinate
+    % #3 = number of x cells
+    % #4 = number of y cells
+    % #5 = number of z cells
+    % #6 = x label
+    % #7 = y label
+    % #8 = z_label
+    % #9 = fill color
+        \ifx#6\empty\else \draw [color=\xlinecolor] (#1, #2) -- node[midway, rotate=0, anchor=north, 
+            font=\sffamily\fontsize{\xaxisfontsize}{6},fill=white, fill opacity=0.9]{\textbf{#6}}(#1+#3*\uu,#2); \fi
+        \ifx#7\empty\else \draw [color=\xlinecolor] (#1, #2) -- node[midway, rotate=90,anchor=south, 
+            font=\sffamily\fontsize{\xaxisfontsize}{6},fill=white]{\textbf{#7}}(#1,#2+#4*\uu); \fi
+        \ifx#8\empty\else \draw [color=\xlinecolor] (#1, #2+#4*\uu, 0) -- node[midway, rotate=45, anchor=south, 
+            font=\sffamily\fontsize{\xaxisfontsize, }{6}]{\textbf{#8}} +(0,0,-#5*\xcellsizez); \fi    
+
+        \foreach \x in {0,...,\numexpr#3-1} {
+            \foreach \y in {0,...,\numexpr#4-1} {
+                \draw[color=\xlinecolor, fill=#9] (#1+\x*\uu, #2+\y*\uu, 0) rectangle +(\uu,\uu, 0);
+            }
+        }
+        \foreach \x in {0,...,\numexpr#3-1} {
+            \foreach \z in {0,...,\numexpr#5-1} {
+                \draw[color=\xlinecolor, fill=#9] (#1+\x*\uu,#2+#4*\uu,-\z*\xcellsizez) -- +(\uu,0,0) -- +(\uu,0,-\xcellsizez) -- +(0,0,-\xcellsizez) -- cycle;
+            }
+        }
+        \foreach \y in {0,...,\numexpr#4-1} {
+            \foreach \z in {0,...,\numexpr#5-1} {
+                \draw[color=\xlinecolor, fill=#9] (#1+#3*\uu,#2+\y*\uu,-\z*\xcellsizez) -- +(0,\uu,0) -- +(0,\uu,-\xcellsizez) -- +(0,0,-\xcellsizez) -- cycle;
+            }
+        }
+        % \ifx#6\empty\else node at(#1+#3*\uu*0.5,#2) [rotate=0, anchor=north, font=\sffamily\fontsize{\xaxisfontsize}{9}]  {#6}; \fi
+    }
+    
+    \newcommand{\drawgrol}[2]{
+        \def\olcolor{orange}
+        % \def\coordlist{(2, 3, 0),(8, 1, 0),(2, 9, 0),(6, 8, 0), (14, 4, 0), (3, 13, 0), (13, 11, 0)};
+            \fill[\olcolor] (2 * \uu + #1, 3 * \uu + #2) rectangle +(\uu, \uu);
+            \fill[\olcolor] (8 * \uu + #1, 1 * \uu + #2) rectangle +(\uu, \uu);
+            \fill[\olcolor] (2 * \uu + #1, 9 * \uu + #2) rectangle +(\uu, \uu);
+            \fill[\olcolor] (6 * \uu + #1, 8 * \uu + #2) rectangle +(\uu, \uu);
+            \fill[\olcolor] (14 * \uu + #1, 4 * \uu + #2) rectangle +(\uu, \uu);
+            \fill[\olcolor] (3 * \uu + #1, 13 * \uu + #2) rectangle +(\uu, \uu);
+            \fill[\olcolor] (13 * \uu + #1, 11 * \uu + #2) rectangle +(\uu, \uu);
+    }
+    
+    \newcommand{\drawgrheat}[4]{
+        \def\olcolor{orange}
+        
+        \foreach \x in {0,...,\numexpr#3-1} {
+            \foreach \y in {0,...,\numexpr#4-1} {
+                \draw[color=\xlinecolor, fill=orange!10] (#1+\x*\uu, #2+\y*\uu, 0) rectangle +(\uu,\uu, 0);
+    
+                \pgfmathparse{random(0,100)}  % Generate a random number between 0 and 9
+                \ifnum\pgfmathresult > 40
+                    \draw[color=\xlinecolor, fill=orange!20] (#1+\x*\uu, #2+\y*\uu, 0) rectangle +(\uu,\uu, 0);  
+                \fi
+                \ifnum\pgfmathresult > 70
+                    \draw[color=\xlinecolor, fill=orange!30] (#1+\x*\uu, #2+\y*\uu, 0) rectangle +(\uu,\uu, 0);
+                \fi
+                \ifnum\pgfmathresult > 90
+                    \draw[color=\xlinecolor, fill=orange!40] (#1+\x*\uu, #2+\y*\uu, 0) rectangle +(\uu,\uu, 0);
+                \fi
+            }
+        }    
+    }
+    
+    
+\begin{tikzpicture}
+    
+    \def\toptitlepos{-6 * \uu}        % offset for top titles
+    \def\toptitlefont{9}        % offset for top titles
+    \def\bottomtitlepos{-2.3}    % offset for bottom titles
+    \def\gridcolor{black!70};
+
+    \def\anchor0{-2.5 * \uu}
+    % BIG BLOCK
+    \def\bbsize{24*\uu}
+    \def\bbx0{-20*\uu}
+    \def\bby0{-4*\uu}
+    % \pgfmathsetmacro\bby0{-2*\uu}
+
+
+    % MAIN WEIGHTS MATRIX
+    \draw[orange, ultra thick]   (\bbx0, \bby0) rectangle +(\bbsize,\bbsize);
+    \draw[color=orange, step=\uu*4] (\bbx0, \bby0)  grid      +(\bbsize,\bbsize);
+    % \node at (0 * \uu, \uu*33.5) [font=\fontsize{\toptitlefont}{10}\fontfamily{ptm}\selectfont, align=center] 
+    %     {layer weights matrix};
+
+    \node at (\bbx0 + \bbsize * 0.5, \bbsize + \uu*2 + \bby0) 
+        [color=black!90, font=\sffamily\fontsize{5}{8}\selectfont, fill=white, align=center] 
+        {\textbf{input dimension (8192)}};
+    \node at (\bbx0 - 2 * \uu, \bby0 + \bbsize * 0.5) 
+        [color=black!90, font=\sffamily\fontsize{5}{8}\selectfont, fill=white, align=center, rotate=90] 
+        {\textbf{output dimension (8192)}};
+
+    % Original weights
+    \drawgrid{\anchor0}{0}{16}{16}{12}{group size}{2nd order group}{\hspace{-1px}16bit}{orange!10};
+    \drawgrheat{\anchor0}{0}{16}{16};
+    \drawgrol{\anchor0}{0};
+
+    % CALLOUT BOX
+    \draw[gray, ultra thick, fill=orange!10]   (\bbx0 + \uu * 4, \bby0+ 12*\uu) rectangle +(\uu*4,\uu*4);    
+    \draw[orange, ultra thick]   (\bbx0 + 8 *\uu , \bby0 + 16*\uu) -- (\anchor0, 16*\uu);
+    \draw[orange, ultra thick]   (\bbx0 + 8 *\uu, \bby0 + 12 * \uu) -- (\anchor0, 0);
+
+    % \node at (\anchor0, 0) {\calloutgrid{0}{0}{16}{16}{12}{0.15}{0.05}{\gridcolor}{orange!10}};
+    \node at (\anchor0 + 2 * \uu, \toptitlepos) [font=\fontsize{\toptitlefont}{8}\fontfamily{ptm}\selectfont, align=center] {weight matrix split into $\beta_1{\times}\beta_2$ blocks};
+    
+    % Quantized weights
+    \def\anchor1{31 * \uu}
+    \drawgrid{\anchor1}{0}{16}{16}{3}{group size}{2nd order group size}{3 bit}{yellow!30}    
+    \node at (\anchor1 + 16 * 0.5 * \uu - 2 *\uu, \toptitlepos) [font=\fontsize{\toptitlefont}{10}\fontfamily{ptm}\selectfont, align=center] {quantized weights};
+ 
+    % Arrow
+    \def\anchorarrow{21.5 * \uu}
+    \node [single arrow, draw, fill=black!10, minimum height=4*\uu, font=\sffamily\fontsize{9}{9}\selectfont] at (\anchorarrow, 16 * 0.5 * \uu) {SpQR};
+    
+    % scales and zeros
+    \def\anchorCa{52 * \uu};
+    \def\anchorCb{55 * \uu};
+    % \def\anchor3b{8.125};
+    \drawgrid{\anchorCa}{0}{1}{16}{3}{}{2nd order group size}{3 bit}{green!20};
+    \drawgrid{\anchorCb}{0}{1}{16}{3}{}{}{}{blue!20};
+    
+    % QQ scales and zeros 
+    \def\xDa{59 * \uu};  % blocks' center
+    % \def\xDb{65 * \uu};  % right blocks center
+    \def\xDc{61 * \uu};  % caption center
+
+    \def\xDe{0};
+    \def\xDf{4.5 * \uu};
+    \def\xDg{9 * \uu};
+    \def\xDh{13.5 * \uu};
+    
+    \drawgrid{\xDa}{\xDe}{1}{1}{12}{}{}{}{blue!20};
+    \drawgrid{\xDa}{\xDf}{1}{1}{12}{}{}{}{blue!20};
+    \drawgrid{\xDa}{\xDg}{1}{1}{12}{}{}{}{green!20};
+    \drawgrid{\xDa}{\xDh}{1}{1}{12}{}{}{16 bit}{green!20};
+
+    \node at (53 * \uu, \toptitlepos * 0.3) [font=\fontsize{7}{6}\selectfont, align=center] {1st\\order};    
+    \node at (61 * \uu, \toptitlepos * 0.3) [font=\fontsize{7}{6}\selectfont, align=center] {2nd\\order};    
+    \node at (57 * \uu, \toptitlepos + 0.05) [font=\fontsize{\toptitlefont}{10}\fontfamily{ptm}\selectfont, align=center] {scales and zeros};
+
+    \def\xE{65 * \uu};
+    % \drawgrid{\xE}{0}{16}{16}{12}{}{}{16 bit}{green};
+    \drawgrid{\xE}{-1*\uu}{16}{16}{18}{}{}{32 bit}{white!30};
+    \drawgrol{\xE}{-1*\uu};
+
+    \node at (\xE + 16 * 0.5 * \uu, \toptitlepos * 0.6) [font=\fontsize{8}{10}\selectfont, align=center] {$<1\%$ of total};   
+
+    \node at (\xE + 16 * 0.5 * \uu, \toptitlepos) [font=\fontsize{\toptitlefont}{8}\fontfamily{ptm}\selectfont, align=center] {(outliers)};
+
+    % CURLY BRACKET
+    % \draw[gray, ultra thick, decorate,decoration={brace,amplitude=5pt,mirror,raise=4ex}, ] 
+    %     (85 * \uu, 17 * \uu) -- (28 * \uu, 17 * \uu)  
+    %     node[font=\fontsize{14}{8}\fontfamily{ptm}\selectfont, midway,yshift=3em]{SpQR representation};
+
+
+
+    
+\end{tikzpicture}
