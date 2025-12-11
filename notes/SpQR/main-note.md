@@ -54,7 +54,7 @@
 - **Grouped quantization with quantized metadata**: Uses very small groups for quantization scales and zeros to reduce error, but stores the scales themselves in low-bit quantized form so that metadata does not dominate the overall bit budget; with 16-bit stats and tiny groups, scale/zero would cost on the order of 2 bits per weight by themselves, making 3-4 bit total budgets impossible.  
    > "We implement a variant of grouped quantization with very small group size, e.g. 16 contiguous elements, but we show that one can quantize the quantization scales themselves to a 3-bit representation." (Introduction; paper-source/primary/tex/main.tex)  
    > "\[\overline{b} \simeq b_{w} + \frac{b_{s} + b_{z}}{\beta_1} + \frac{64}{\beta_1 \beta_2} + 32 r_o\]" (Appendix; paper-source/primary/tex/appendix.tex)
-- **CSR-like sparse storage for outliers**: Outliers are stored row-wise like CSR, enabling efficient sparse matmul and predictable memory access patterns.  
+- **Compressed Sparse Row (CSR)-like sparse storage for outliers**: Outliers are stored row-wise like CSR, enabling efficient sparse matmul and predictable memory access patterns.  
   > "To accommodate all possible structures, we encode outliers individually, in a row-wise arrangement similar to CSR." (Method; paper-source/primary/tex/method.tex)
 - **Custom GPU inference kernel**: Combines a dense low-bit matmul with a specialized sparse kernel for outliers, achieving both compression and speedups.  
   > "We design an efficient GPU-based decoding implementation for the SpQR format... we develop a specialized sparse-matrix multiplication algorithm... and then performs matrix multiplication." (Method; paper-source/primary/tex/method.tex)  
@@ -101,6 +101,22 @@ flowchart LR
 ### 4.1 Parameter sensitivity and outlier patterns
 - **Per-weight sensitivity via GPTQ**: They apply GPTQ 3-bit quantization without grouping to LLaMA-65B, using the Colossal Clean Crawled Corpus (C4) as calibration data and 128×2048-token sequences, and compute per-weight quantization error.  
   > "As the quantization method, we use GPTQ quantization to 3-bit, without weight grouping... We use C4 as the calibration dataset, and we estimate the error on 128 sequences of 2048 tokens each." (Exploring parameter sensitivity; paper-source/primary/tex/method.tex)
+- **Closed-form minimum error per weight (OBS/OBQ view)**: In the SpQR text they define the sensitivity of a weight \(w_{ij}\) as the *minimum* squared output error over all alternative weight matrices \(W'\) that agree with \(W\) except that \(w'_{ij}\) is forced to its quantized value; all other entries of \(W'\) may move continuously to compensate:  
+  \[
+    s_{ij} \;=\; \min_{W'} \left\lVert WX - W'X \right\rVert_2^2 \quad \text{s.t.}\;\; w'_{ij} = \mathrm{quant}(w_{ij}).
+  \]  
+  Using the generalized Optimal Brain Surgeon/Optimal Brain Compression framework, this constrained quadratic problem admits a closed-form expression in terms of the inverse Hessian:  
+  \[
+    s_{ij} \;=\; \frac{\big(w_{ij} - \mathrm{quant}(w_{ij})\big)^2}{2\,\big[(XX^\top)^{-1}\big]_{jj}}.
+  \]  
+  Moreover, the *optimizer* \(W'\) that attains this minimum is also available in closed form. For a given row \(i\) and column \(j\), if we denote by \(H = 2XX^\top\) the per-row Hessian and by \(H^{-1}\) its inverse, then we can write the optimal updated row explicitly as  
+  \[
+    w'_{ij} \;=\; \mathrm{quant}(w_{ij}), \qquad
+    w'_{i:} \;=\; w_{i:} - \frac{w_{ij} - \mathrm{quant}(w_{ij})}{[H^{-1}]_{jj}}\,(H^{-1})_{:,j},
+  \]  
+  i.e. the constrained coordinate \(w_{ij}\) is set exactly to its quantized value, and all coordinates in the row (including \(j\)) are simultaneously nudged along the \(j\)-th column of \(H^{-1}\) so that they optimally compensate for this change. For sets of weights, the OBS/OBQ formulas generalize using inverse submatrices and block updates, which is exactly what GPTQ and SpQR exploit when they use inverse-Hessian information to score candidate quantizations.  
+  > "We define the sensitivity \(s_{ij}\)... as the minimum squared difference... where this weight is quantized... This can be determined by following the generalized Optimal Brain Surgeon framework..." (Quantization sensitivity of LLM weights; paper-source/primary/tex/main.tex)  
+  > "This saliency measure can be approximated efficiently by quantization solvers, such as GPTQ..." (paper-source/primary/tex/main.tex)
 - **Observed structured patterns**: Heatmaps show that sensitive weights form clear structures: rows (output units), columns (input features), attention heads, and rotary-embedding-related periodic patterns.  
   > "Using the sensitivity analysis, we observe several patterns in the weight matrix, often in a single row or column." (Exploring parameter sensitivity; paper-source/primary/tex/method.tex)  
   > "Row outliers... Column outliers... Sensitive attention heads... The Rotary embedding pattern... Unstructured outliers." (Exploring parameter sensitivity; paper-source/primary/tex/method.tex)
@@ -112,10 +128,15 @@ flowchart LR
 ### 4.2 SpQR representation: low-bit base + sparse outliers
 - **Base quantized weights**: Each large linear weight matrix is partitioned into small groups (e.g., 16 input columns) with shared quantization statistics (scale and zero-point). Weights are quantized to 3 or 4 bits within each group.  
   > "We implement a variant of grouped quantization with very small group size, e.g. 16 contiguous elements..." (Introduction; paper-source/primary/tex/main.tex)
+  In practice, “contiguous elements” / “consecutive weights” means **groups of consecutive input features (columns)** across all output rows: after an optional permutation of the input dimension, SpQR/GPTQ iterate over `column_index` and form groups as `weight[:, column_index : column_index + groupsize]`, i.e., fixed-width vertical strips of size \(\beta_1\) in the \((\text{out\_dim} \times \text{in\_dim})\) matrix, not arbitrary 2D patches. At this level, **columns (and groups of columns) are the atomic units** for fitting quantization statistics and for GPTQ’s greedy updates; individual scalar weights within a column are not grouped into irregular 2D shapes.  
+  > "for column_index in range(block_start, block_end): if column_index % groupsize == 0: group_weight = weight[:, column_index : column_index + groupsize]" (context/refcode/SpQR/spqr_engine.py)
 - **Quantized statistics**: The group-level scales and zeros are themselves quantized (3-bit) to reduce overhead, effectively making quantization metadata low-bit as well. Without this, for very small groups (e.g., group size 16) the 16-bit scale and zero would contribute ≈2 bits/parameter just from metadata, pushing the total above 5 bits/parameter even if weights are 3-bit. Quantizing stats to 3 bits shrinks their contribution to ≈0.375 bits/parameter, which is what allows SpQR to keep both small groups (for accuracy) and a 3.x bits/parameter overall budget.  
   > "...we show that one can quantize the quantization scales themselves to a 3-bit representation." (Introduction; paper-source/primary/tex/main.tex)  
   > "For configuration with $b_w = 3, b_s=3, b_z=3, \beta_1=16, \beta_2=32$ and $0.4\%$ of outliers, the average number of bits is ... $\simeq 3.63$." (Appendix; paper-source/primary/tex/appendix.tex)  
   > "This reduces the memory footprint of SpQR, but results in a moderate increase in perplexity." (Ablations; paper-source/primary/tex/experiments.tex)
+- **Group shapes are uniform, not arbitrary clusters**: Although the motivating examples show small structured regions (partial rows, heads, etc.), SpQR does not adapt group sizes or shapes to those patterns. First-level groups are always fixed-size, contiguous blocks of \(\beta_1\) weights (e.g., 8–32), and second-level “bilevel” groups are fixed blocks of \(\beta_2\) consecutive quantization-stat entries (e.g., 16); the non-uniformity lives in which groups/weights are later treated as outliers, not in the geometry of the groups themselves.  
+  > "For every $\beta_1$ consecutive weights, there is a separate quantization scale and zero-point." (SpQR overview; paper-source/primary/tex/method.tex)  
+  > "We group groupwise statistics from $\beta_2=16$ consecutive values and quantize them together in the same number of bits..." (SpQR overview; paper-source/primary/tex/method.tex)
 - **Outlier storage**: Outlier weights are stored in a row-wise CSR-like layout: for each outlier they store a 16-bit value and a 16-bit column index, plus a prefix-sum array to know how many outliers each row has.  
   > "Recall that our outliers are unstructured; for storage, we sort them by their row first and column second, so that outliers in the same row are contiguous in memory." (Method; paper-source/primary/tex/method.tex)  
   > "For each outlier, we store two scalars: the 16-bit weight value and the 16-bit column index. For each row, we also store a single 32-bit number... This results in an average storage cost of 32.03 to 32.1 bits per sensitive weight." (Method; paper-source/primary/tex/method.tex)
@@ -130,6 +151,12 @@ flowchart LR
   1. **Outlier detection**: For each weight (or small group), estimate the error it would incur under quantization and select high-error weights as outliers.  
   2. **Compression**: Quantize all non-outlier weights with grouped quantization and quantized stats; store outliers separately.  
   > "Our approach splits this process into two steps: an ``outlier detection'' step... and an actual compression step, in which most ($\geq 99\%$) of weights are compressed to low-bitwidth, the outliers are extracted..." (Introduction; paper-source/primary/tex/main.tex)
+- **How outliers interact with GPTQ**: In the full SpQR algorithm, outlier detection (via leave-one-out min–max quantization plus Hessian weighting) runs *before* quantizing a group, and those outlier positions are then excluded when fitting group statistics and computing per-column quantization error. However, during the subsequent GPTQ-style loop over columns, the real-valued weight matrix \(W\) is still updated using the Hessian-based correction, so **outlier weights are actively adjusted to compensate for quantization error**, even though they themselves are never quantized. At the end, the quantized base matrix \(Q\) is kept for non-outlier positions, while the final adjusted 16-bit values at outlier positions are gathered into a CSR-like sparse matrix and stored as part of the SpQR artifact.  
+  > "Following this first outlier detection step, we quantize the base weights ignoring all outliers that occur in the same quantization group... Interestingly, unlike~\cite{dettmers2022llm}, a weight can be chosen to be an outlier not only if it causes error by itself, but also if the GPTQ algorithm can employ this weight to compensate errors from many other weights. Thus, the resulting 16-bit value will contain not the original weight, but a weight that was adjusted to minimize the output error." (Method; paper-source/primary/tex/method.tex)
+- **Simplified mental model (assuming outlier mask is fixed)**: For intuition, it can be helpful to view SpQR’s per-group optimization as a two-part solve once you know which positions are outliers:  
+  1. **Base subproblem** (low-bit): treat all non-outlier weights in the group as variables constrained to lie on a shared min–max grid (group-wise scale/zero) and use a GPTQ-style greedy procedure to choose their quantized values so that the layer’s quadratic loss is minimized. Conceptually, this gives you a “fixed” quantized base matrix for the group.  
+  2. **Outlier subproblem** (16-bit): treat the outlier positions as free 16-bit variables and solve, under the same quadratic model, for the real-valued outlier weights that best compensate the errors introduced by quantizing the base. The resulting outlier values are generally **not** equal to the original fp16 weights; they are optimized corrections and are stored sparsely in CSR-like form.  
+  The actual Algorithm 1 interleaves these two views in a single GPTQ-style pass (it does not literally freeze the base and then solve a clean second-stage problem), but the “fixed quantized base + optimized outliers” picture is a good way to reason about why outliers can repair much of the quantization damage.  
 - **Reference code (SpQR engine)**: The local reference implementation follows this pipeline in `SPQRUtil.quantize`, which collects Hessian information and then performs block-wise quantization with outlier detection and quantization-statistics compression.  
   > "class SPQRUtil: \"\"\"Learns GPTQ for a single linear layer\"\"\" ... def quantize(...)" (context/refcode/SpQR/spqr_engine.py:13-76)  
   > "likely_unstructured_outlier_mask = (loo_quantization_error_sq > unstructured_outlier_threshold).float()" (context/refcode/SpQR/spqr_engine.py:100-120)
@@ -279,6 +306,8 @@ def spqr_quantize_layer(W, H, groupsize, bits, outlier_threshold):
 ### C. SpQR storage format
 - **Description**: Pack three components per layer: (1) quantized weights, (2) quantized per-group stats, (3) CSR-like outlier data.  
   > "For each outlier, we store two scalars: the 16-bit weight value and the 16-bit column index. For each row, we also store a single 32-bit number..." (Method; paper-source/primary/tex/method.tex)
+![Figure 3: High-level SpQR representation for a single weight tensor](figures/spqr_representation_overview.png)  
+> "A high-level overview of the SpQR representation for a single weight tensor. The right side of the image depicts all stored data types and their dimensions." (Figure caption; paper-source/primary/tex/method.tex)
 - **Mermaid diagram**:
 
 ```mermaid
@@ -646,6 +675,48 @@ def gptq_quantize_layer(W, X, bits):
 
     return W_q
 ```
+
+- **Hessian-based intuition and formulas (from the GPTQ paper)**: GPTQ makes the layer-wise objective explicitly quadratic in the weights and then uses the Hessian to choose quantized weights that least increase this quadratic error.
+  - For a single linear layer with weights $\mathbf{W}$ and calibration inputs $\mathbf{X}$, GPTQ considers the layer-wise reconstruction problem  
+    \[
+      \min_{\widehat{\mathbf{W}}} \left\lVert \mathbf{W}\mathbf{X} - \widehat{\mathbf{W}}\mathbf{X} \right\rVert_2^2,
+    \]  
+    whose Hessian (per row, over the remaining full-precision weights $F$) is  
+    \[
+      \mathbf{H}_F = 2\,\mathbf{X}_F \mathbf{X}_F^\top.
+    \]  
+    > "Since the corresponding objective is a quadratic, whose Hessian is $\mathbf{H}_F = 2\mathbf{X}_F\mathbf{X}_F^\top$, where $F$ denotes the set of remaining full-precision weights..." (Section “Optimal Brain Quantization”; paper-source/gptq/gptq.tex)
+  - If we look at one scalar weight $w_q$ to quantize next, OBQ/GPTQ show that the *greedy*-optimal choice is to pick the quantized value that minimizes the induced quadratic loss, using the inverse Hessian:  
+    \[
+      w_q = \arg\min_{w_q}\, \frac{(\mathrm{quant}(w_q) - w_q)^2}{\big[\mathbf{H}_F^{-1}\big]_{qq}},\qquad
+      \boldsymbol{\delta}_F = -\,\frac{w_q - \mathrm{quant}(w_q)}{\big[\mathbf{H}_F^{-1}\big]_{qq}}\,(\mathbf{H}_F^{-1})_{:,q},
+    \]  
+    where $\mathrm{quant}(w)$ rounds $w$ to the nearest grid point, and $\boldsymbol{\delta}_F$ is the optimal correction to all other (still full-precision) weights so that they compensate for the quantization error of $w_q$.  
+    > "The greedy-optimal weight to quantize next... and the corresponding optimal update of all weights in $F$... are given by the following formulas..." (Equation (2); paper-source/gptq/gptq.tex)
+  - After quantizing $w_q$, GPTQ updates the inverse Hessian in closed form, again using second-order information:  
+    \[
+      \mathbf{H}_{-q}^{-1} = \Big(\mathbf{H}^{-1} - \frac{1}{[\mathbf{H}^{-1}]_{qq}}\, \mathbf{H}^{-1}_{:,q}\, \mathbf{H}^{-1}_{q,:} \Big)_{-q},
+    \]  
+    which is essentially a rank-1 update corresponding to removing row/column $q$ from the active set.  
+    > "...by removing the $q$th row and column of $\mathbf{H}$... directly in the inverse via one step of Gaussian elimination." (Equation (3); paper-source/gptq/gptq.tex)
+  - **Intuition**: the Hessian $\mathbf{H}$ encodes how sensitive the layer outputs are to changes in each weight *and* to co-variations between weights. Weights with large diagonal entries (or small $[\mathbf{H}^{-1}]_{qq}$) are “important”: changing them causes a large loss increase. GPTQ uses $[\mathbf{H}^{-1}]_{qq}$ to normalize the squared quantization error of each candidate value, so that it prefers quantization choices that cause small changes in the quadratic loss, not just small raw weight error. The update $\boldsymbol{\delta}_F$ then nudges the remaining weights along directions inferred from the off-diagonal entries of $\mathbf{H}^{-1}$, so that later weights “absorb” some of the damage incurred by quantizing earlier ones.
+  - **Practical reformulation in GPTQ**: the paper replaces repeated inverse updates with a more stable and efficient Cholesky-based variant and quantizes weights in a fixed column order and in blocks, but the core Hessian-based idea remains:  
+    - approximate $\mathbf{H} \approx 2\mathbf{X}\mathbf{X}^\top + \lambda \mathbf{I}$ from calibration data,  
+    - use $\mathbf{H}^{-1}$ (via its Cholesky) to score candidate quantized weights and compute corrections,  
+    - greedily quantize columns/blocks while updating the quadratic model of the loss.  
+    > "Quantize $\mathbf{W}$ given inverse Hessian $\mathbf{H}^{-1} = (2 \mathbf{X} \mathbf{X}^\top + \lambda \mathbf{I})^{-1}$..." (Algorithm 1 caption; paper-source/gptq/gptq.tex)
+
+- **Q&A: Why does GPTQ use $[\mathbf{H}^{-1}]_{qq}$ in the denominator instead of just $|\mathbf{H}_{qq}|$?**  
+  - **Q**: It seems natural to weight the error of weight $w_q$ by the curvature $|\mathbf{H}_{qq}|$. Why do OBQ/GPTQ instead use $(\mathrm{quant}(w_q) - w_q)^2 / [\mathbf{H}^{-1}]_{qq}$ as the score?  
+  - **A (short answer)**: because GPTQ does *not* freeze the other weights when it quantizes $w_q$. It explicitly allows the remaining full-precision weights $F$ to move by an optimal correction $\boldsymbol{\delta}_F$ that minimizes the quadratic loss increase. If you solve that small optimization problem exactly, the resulting *minimal* loss increase is  
+    \[
+      \Delta L^* \;=\; \tfrac{1}{2}\,\frac{(\mathrm{quant}(w_q) - w_q)^2}{[\mathbf{H}^{-1}]_{qq}},
+    \]  
+    so the greedy-optimal choice really is to minimize $(\mathrm{quant}(w_q) - w_q)^2 / [\mathbf{H}^{-1}]_{qq}$, not $(\mathrm{quant}(w_q) - w_q)^2 \cdot |\mathbf{H}_{qq}|$. Using $|\mathbf{H}_{qq}|$ would correspond to a much more naive setting where you keep all other weights fixed.  
+  - **A (intuition)**: $\mathbf{H}$ is a precision matrix: its inverse $\mathbf{H}^{-1}$ behaves like a covariance. The scalar $[\mathbf{H}^{-1}]_{qq}$ can be read as the *effective variance* along weight $q$ once you allow the other coordinates to co-vary optimally.  
+    - If $[\mathbf{H}^{-1}]_{qq}$ is **small**, then changes in $w_q$ are hard to compensate for: even if other weights move, the quadratic loss increases a lot; the denominator is small, so the score is large → $w_q$ is “sensitive”.  
+    - If $[\mathbf{H}^{-1}]_{qq}$ is **large**, there is a direction in weight space where other coordinates can absorb the effect of changing $w_q$; the same $|\Delta w_q|$ yields a smaller $\Delta L^*$, so GPTQ is more tolerant to quantization error there.  
+    In other words, $[\mathbf{H}^{-1}]_{qq}$ captures *how much slack the rest of the layer has to compensate for errors on $w_q$*, which is exactly what GPTQ exploits by applying the correction $\boldsymbol{\delta}_F$ after each quantization step.  
 
 - **How to read this if you’re new**:
   - Think of GPTQ as: “use a small calibration set to learn which weights matter more (via Hessian), then quantize them in a careful order, letting later weights compensate for the mistakes of earlier ones.”  
