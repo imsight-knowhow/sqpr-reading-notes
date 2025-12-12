@@ -309,11 +309,12 @@ def spqr_quantize_layer(W, H, groupsize, bits, outlier_threshold):
 ![Figure 3: High-level SpQR representation for a single weight tensor](figures/spqr_representation_overview.png)  
 > "A high-level overview of the SpQR representation for a single weight tensor. The right side of the image depicts all stored data types and their dimensions." (Figure caption; paper-source/primary/tex/method.tex)
 - **Group geometry in the reference code (β₁/β₂)**: The released implementation does **not** explicitly extract a 2‑D \(\beta_1 \times \beta_2\) submatrix during fitting. Instead, it applies the two group sizes along different 1‑D axes:  
-  - **First‑order groups over weights (`groupsize` = paper β₂)** are taken along the *input / column* dimension. When `column_index % groupsize == 0`, it slices `weight[:, column_index : column_index + groupsize]`, i.e., a full‑height vertical strip of shape `(d_out, groupsize)` that shares quantization stats per output row.  
+  - **First‑order groups over weights (`groupsize` = paper β₁)** are taken along the *input / column* dimension. When `column_index % groupsize == 0`, it slices `weight[:, column_index : column_index + groupsize]`, i.e., a full‑height vertical strip of shape `(d_out, groupsize)` that shares quantization stats per output row.  
     > "if column_index % groupsize == 0: ... group_weight = weight[:, column_index : column_index + groupsize]" (context/refcode/SpQR/spqr_engine.py:140-145)
-  - **Second‑order groups over statistics (`qq_groupsize` = paper β₁)** are formed by reshaping the per‑row scales/zeros into contiguous blocks of `qq_groupsize` entries and quantizing them together.  
+  - **Second‑order groups over statistics (`qq_groupsize` = paper β₂)** are formed by reshaping the per‑row scales/zeros into contiguous blocks of `qq_groupsize` entries and quantizing them together.  
     > "scale_groups = self.scale.reshape(-1, self.qq_groupsize) ... zero_groups = self.zero.reshape(-1, self.qq_groupsize)" (context/refcode/SpQR/quant_groups.py:103-121)
-  Taken together, the stored/decoded tiles correspond to \(\beta_1\) output rows by \(\beta_2\) input columns (matching Fig. 3), but they arise from *strip‑wise weight grouping + grouped‑stat quantization*, not direct 2‑D patch selection.
+  Taken together, the stored/decoded tiles correspond to \(\beta_2\) output rows by \(\beta_1\) input columns (matching Fig. 3), but they arise from *strip‑wise weight grouping + grouped‑stat quantization*, not direct 2‑D patch selection.  
+  **Naming note**: the CUDA/HF export stores `beta2 = groupsize` and `beta1 = qq_groupsize`, so `beta1/beta2` are swapped relative to the paper’s notation. (context/refcode/SpQR/convert_to_hf.py:76-79)
 - **Mermaid diagram**:
 
 ```mermaid
@@ -721,14 +722,21 @@ def gptq_quantize_layer(W, X, bits):
 ```
 
 - **Hessian-based intuition and formulas (from the GPTQ paper)**: GPTQ makes the layer-wise objective explicitly quadratic in the weights and then uses the Hessian to choose quantized weights that least increase this quadratic error.
-  - For a single linear layer with weights $\mathbf{W}$ and calibration inputs $\mathbf{X}$, GPTQ considers the layer-wise reconstruction problem  
+  - **Objective (layer-wise reconstruction)**: for a linear layer with weights $\mathbf{W}$ and calibration inputs $\mathbf{X}$, GPTQ/OBQ solve
     \[
-      \min_{\widehat{\mathbf{W}}} \left\lVert \mathbf{W}\mathbf{X} - \widehat{\mathbf{W}}\mathbf{X} \right\rVert_2^2,
-    \]  
-    whose Hessian (per row, over the remaining full-precision weights $F$) is  
+      \min_{\widehat{\mathbf{W}}}\;\; \left\lVert \mathbf{W}\mathbf{X} - \widehat{\mathbf{W}}\mathbf{X} \right\rVert_F^2
+      \;=\; \min_{\widehat{\mathbf{W}}}\;\; \left\lVert (\mathbf{W}-\widehat{\mathbf{W}})\mathbf{X} \right\rVert_F^2 .
+    \]
+    Writing this row‑wise, for a single row $\mathbf{w}$ and the subset $F$ of still‑full‑precision coordinates,
     \[
-      \mathbf{H}_F = 2\,\mathbf{X}_F \mathbf{X}_F^\top.
-    \]  
+      L_F(\widehat{\mathbf{w}}_F)
+      \;=\; \left\lVert (\mathbf{w}_F-\widehat{\mathbf{w}}_F)\mathbf{X}_F \right\rVert_2^2
+      \;=\; \tfrac{1}{2}\,(\mathbf{w}_F-\widehat{\mathbf{w}}_F)^\top \mathbf{H}_F (\mathbf{w}_F-\widehat{\mathbf{w}}_F),
+    \]
+    so the Hessian of this quadratic objective is
+    \[
+      \mathbf{H}_F = 2\,\mathbf{X}_F \mathbf{X}_F^\top \quad (\text{with damping } +\lambda \mathbf{I}\text{ in practice}).
+    \]
     > "Since the corresponding objective is a quadratic, whose Hessian is $\mathbf{H}_F = 2\mathbf{X}_F\mathbf{X}_F^\top$, where $F$ denotes the set of remaining full-precision weights..." (Section “Optimal Brain Quantization”; paper-source/gptq/gptq.tex)
   - If we look at one scalar weight $w_q$ to quantize next, OBQ/GPTQ show that the *greedy*-optimal choice is to pick the quantized value that minimizes the induced quadratic loss, using the inverse Hessian:  
     \[
