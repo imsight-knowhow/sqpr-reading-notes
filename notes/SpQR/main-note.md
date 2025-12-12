@@ -308,6 +308,12 @@ def spqr_quantize_layer(W, H, groupsize, bits, outlier_threshold):
   > "For each outlier, we store two scalars: the 16-bit weight value and the 16-bit column index. For each row, we also store a single 32-bit number..." (Method; paper-source/primary/tex/method.tex)
 ![Figure 3: High-level SpQR representation for a single weight tensor](figures/spqr_representation_overview.png)  
 > "A high-level overview of the SpQR representation for a single weight tensor. The right side of the image depicts all stored data types and their dimensions." (Figure caption; paper-source/primary/tex/method.tex)
+- **Group geometry in the reference code (β₁/β₂)**: The released implementation does **not** explicitly extract a 2‑D \(\beta_1 \times \beta_2\) submatrix during fitting. Instead, it applies the two group sizes along different 1‑D axes:  
+  - **First‑order groups over weights (`groupsize` = paper β₂)** are taken along the *input / column* dimension. When `column_index % groupsize == 0`, it slices `weight[:, column_index : column_index + groupsize]`, i.e., a full‑height vertical strip of shape `(d_out, groupsize)` that shares quantization stats per output row.  
+    > "if column_index % groupsize == 0: ... group_weight = weight[:, column_index : column_index + groupsize]" (context/refcode/SpQR/spqr_engine.py:140-145)
+  - **Second‑order groups over statistics (`qq_groupsize` = paper β₁)** are formed by reshaping the per‑row scales/zeros into contiguous blocks of `qq_groupsize` entries and quantizing them together.  
+    > "scale_groups = self.scale.reshape(-1, self.qq_groupsize) ... zero_groups = self.zero.reshape(-1, self.qq_groupsize)" (context/refcode/SpQR/quant_groups.py:103-121)
+  Taken together, the stored/decoded tiles correspond to \(\beta_1\) output rows by \(\beta_2\) input columns (matching Fig. 3), but they arise from *strip‑wise weight grouping + grouped‑stat quantization*, not direct 2‑D patch selection.
 - **Mermaid diagram**:
 
 ```mermaid
@@ -454,6 +460,36 @@ def spqr_linear_forward(x, art: SpQRLayerArtifact):
   > "Figure~\ref{fig:quantization_method_comparison} measures actual model size versus perplexity... We observe that SpQR outperforms GPTQ (and correspondingly RTN) at similar model size by a significant margin..." (Main Results; paper-source/primary/tex/experiments.tex)  
   > "SpQR with 4.6 to 4.71 bits per parameter approaches the non-quantized models with at most 1\% margin of error for all models." (Main Results; paper-source/primary/tex/experiments.tex)
 
+- **Table 1 (LLaMA perplexity vs size/bit budget)**:  
+  Perplexity on WikiText2, C4, and PTB for LLaMA models under fp16, RTN‑4bit, GPTQ‑4bit, and two SpQR configurations.
+
+  | Size | Method | Avg bits | Wiki2 | C4 | PTB |
+  | --- | --- | ---: | ---: | ---: | ---: |
+  | 7B | fp16 baseline | 16.00 | 5.68 | 7.08 | 8.80 |
+  | 7B | SpQR (near‑lossless) | 4.63 | 5.73 | 7.13 | 8.88 |
+  | 7B | RTN‑4bit | 4.00 | 6.43 | 7.93 | 10.30 |
+  | 7B | GPTQ‑4bit | 4.00 | 6.13 | 7.43 | 9.27 |
+  | 7B | SpQR (~4 bpp) | 3.94 | 5.87 | 7.28 | 9.07 |
+  | 13B | fp16 baseline | 16.00 | 5.09 | 6.61 | 8.07 |
+  | 13B | SpQR (near‑lossless) | 4.63 | 5.13 | 6.64 | 8.13 |
+  | 13B | RTN‑4bit | 4.00 | 5.55 | 6.98 | 8.65 |
+  | 13B | GPTQ‑4bit | 4.00 | 5.40 | 6.84 | 8.44 |
+  | 13B | SpQR (~4 bpp) | 3.96 | 5.22 | 6.72 | 8.22 |
+  | 30B | fp16 baseline | 16.00 | 4.10 | 5.98 | 7.30 |
+  | 30B | SpQR (near‑lossless) | 4.69 | 4.14 | 6.01 | 7.33 |
+  | 30B | RTN‑4bit | 4.00 | 4.57 | 6.34 | 7.75 |
+  | 30B | GPTQ‑4bit | 4.00 | 4.48 | 6.20 | 7.54 |
+  | 30B | SpQR (~4 bpp) | 3.89 | 4.25 | 6.08 | 7.38 |
+  | 65B | fp16 baseline | 16.00 | 3.53 | 5.62 | 6.91 |
+  | 65B | SpQR (near‑lossless) | 4.71 | 3.57 | 5.64 | 6.93 |
+  | 65B | RTN‑4bit | 4.00 | 3.87 | 5.85 | 7.17 |
+  | 65B | GPTQ‑4bit | 4.00 | 3.83 | 5.80 | 7.07 |
+  | 65B | SpQR (~4 bpp) | 3.90 | 3.68 | 5.70 | 6.99 |
+
+  **Why two SpQR rows per model size**:  
+  - The **higher‑bit row (~4.6–4.7 bpp)** is the *near‑lossless* configuration: it uses a slightly larger budget (typically base 4‑bit weights + <1% fp16 outliers + bilevel stats) to get ≤1% perplexity gap vs fp16.  
+  - The **lower‑bit row (~3.9–4.0 bpp)** is a *size‑matched* configuration tuned to stay under ~4 bits/parameter on average (usually base 3‑bit weights + bilevel stats + a small outlier set), so it can be compared fairly to RTN‑4bit and GPTQ‑4bit at the same size.
+
 - **OPT models**:  
   - Appendix tables show SpQR requiring ≤4.3 bits/parameter to stay within 1% perplexity for OPT {6.7B, 13B, 30B, 66B}, outperforming both RTN and GPTQ at 4 bits.  
   > "We can see that SpQR reaches performances within 1\% of the perplexity with less than 4.3 bits per parameter. We also see that... SpQR significantly improves on GPTQ with an improvement as large as the improvement from RTN to GPTQ." (Appendix; paper-source/primary/tex/appendix.tex)
@@ -472,6 +508,14 @@ def spqr_linear_forward(x, art: SpQRLayerArtifact):
 - **Tokens/sec on A100**:  
   - For LLaMA 7–65B, the optimized SpQR kernel achieves 20–30% higher tokens/sec vs fp16 and ~2× vs a PyTorch sparse baseline.  
   > "We see that our optimized SpQR algorithm is faster than the 16-bit baseline and almost 2.0x faster than quantized matrix multiplication + standard PyTorch sparse matrix multiplication baseline." (Inference Time; paper-source/primary/tex/experiments.tex)
+
+- **Table 4 (Inference speed, tokens/s, batch=1 on A100)**:  
+  OOM means the model did not fit in 80GB A100 for the given setup. SpQR (PyTorch) uses dense low‑bit matmul + standard PyTorch sparse outlier matmul; SpQR (optimized) uses the fused/custom kernel.  
+
+  | Setup | fp16 7B | fp16 13B | fp16 30B | fp16 65B | SpQR (PyTorch) 7B | SpQR (PyTorch) 13B | SpQR (PyTorch) 30B | SpQR (PyTorch) 65B | SpQR (optimized) 7B | SpQR (optimized) 13B | SpQR (optimized) 30B | SpQR (optimized) 65B |
+  | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+  | scratch (generate 100 tokens) | 47±2.3 | 37±0.8 | 19±1.1 | OOM | 30±2.2 | 24±1.2 | 8.8±0.4 | OOM | **57±2.4** | **44±0.5** | **22±0.9** | **12±0.6** |
+  | prefix 1024 (+100 tokens) | 46±2.4 | 31±0.9 | 17±0.8 | OOM | 27±1.6 | 21±1.1 | 6.5±0.7 | OOM | **55±2.1** | **37±0.8** | **22±1.3** | **11±0.6** |
 
 ## 11. Ablations & Analysis
 
